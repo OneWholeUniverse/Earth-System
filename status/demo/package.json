@@ -1,0 +1,11 @@
+{
+  "name": "earth-system-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:earth-core": "node tests/earth-core/run-earth-core-tests.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.52.0"
+  }
+}

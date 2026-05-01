@@ -618,12 +618,15 @@
         if (isMicroView && streetMap.getZoom() < MICRO_EXIT_ZOOM) switchToMacro();
       });
       streetMap.on('load', () => {
-        for (const layer of mapLayers.values()) installMapLayer(layer);
+        installStoredMapLayers();
+        scheduleMapLayerInstall();
         emit('mapload', { map: streetMap });
       });
+      streetMap.on('styledata', scheduleMapLayerInstall);
     } else {
       streetMap.jumpTo({ center: [lng, lat], zoom });
       streetMap.resize();
+      scheduleMapLayerInstall();
     }
     return streetMap;
   }
@@ -725,6 +728,16 @@
     return true;
   }
 
+  function installStoredMapLayers() {
+    for (const layer of mapLayers.values()) installMapLayer(layer);
+  }
+
+  function scheduleMapLayerInstall() {
+    requestAnimationFrame(installStoredMapLayers);
+    setTimeout(installStoredMapLayers, 100);
+    setTimeout(installStoredMapLayers, 500);
+  }
+
   function addThreeLayer(id, object, options = {}) {
     if (!id || !object) return null;
     if (threeLayers.has(id)) removeThreeLayer(id);
@@ -748,6 +761,7 @@
     if (!id || !definition) return false;
     mapLayers.set(id, { id, ...definition });
     const installed = installMapLayer(mapLayers.get(id));
+    if (!installed && streetMap) scheduleMapLayerInstall();
     emit('layeradd', { id, type: 'map', installed });
     return installed;
   }
