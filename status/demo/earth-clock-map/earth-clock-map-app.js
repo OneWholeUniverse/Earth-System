@@ -97,102 +97,12 @@
     }
   }
 
-  function parseCSV(text) {
-    const rows = [];
-    let row = [];
-    let value = '';
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i += 1) {
-      const ch = text[i];
-      const next = text[i + 1];
-      if (ch === '"' && inQuotes && next === '"') {
-        value += '"';
-        i += 1;
-      } else if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if (ch === ',' && !inQuotes) {
-        row.push(value);
-        value = '';
-      } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
-        if (ch === '\r' && next === '\n') i += 1;
-        row.push(value);
-        if (row.some(Boolean)) rows.push(row);
-        row = [];
-        value = '';
-      } else {
-        value += ch;
-      }
-    }
-    if (value || row.length) {
-      row.push(value);
-      rows.push(row);
-    }
-    return rows;
-  }
-
-  function parseTSV(text) {
-    return text.trimEnd().split(/\r?\n/).map(line => line.split('\t'));
-  }
-
   async function loadCities() {
-    const res = await fetch(DATA_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Could not load ${DATA_URL}: ${res.status}`);
-    const rows = DATA_URL.endsWith('.tsv') ? parseTSV(await res.text()) : parseCSV(await res.text());
-    const header = rows.shift().map(h => h.trim().toLowerCase());
-    const idx = key => header.indexOf(key);
-    const cityIdx = idx('name') >= 0 ? idx('name') : idx('city');
-    const asciiIdx = idx('ascii') >= 0 ? idx('ascii') : idx('city_ascii');
-    const countryIdx = idx('countryname') >= 0 ? idx('countryname') : idx('country');
-    const isoIdx = idx('country') >= 0 ? idx('country') : idx('iso2');
-    const adminIdx = idx('adminname') >= 0 ? idx('adminname') : idx('admin_name');
-    const latIdx = idx('lat');
-    const lngIdx = idx('lng');
-    const popIdx = idx('population');
-    const elevationIdx = idx('elevation');
-    const timezoneIdx = idx('timezone');
-    const featureIdx = idx('feature');
-    const geonameIdx = idx('geonameid');
-    return rows.map((row, index) => {
-      const city = (row[cityIdx] || row[asciiIdx] || '').trim();
-      const cityAscii = (row[asciiIdx] || row[cityIdx] || '').trim();
-      const adminName = (row[adminIdx] || '').trim();
-      const country = (row[countryIdx] || '').trim();
-      const iso2 = (row[isoIdx] || '').trim();
-      const lat = Number(row[latIdx]);
-      const lng = Number(row[lngIdx]);
-      const pop = Number(row[popIdx]) || 0;
-      const elevation = Number(row[elevationIdx]);
-      const timezone = (row[timezoneIdx] || '').trim();
-      const feature = (row[featureIdx] || '').trim();
-      const placeLabel = labelForParts(city, cityAscii, adminName, country);
-      return {
-        id: row[geonameIdx] ? `geonames-${row[geonameIdx]}` : `city-${index}`,
-        city,
-        cityAscii,
-        adminName,
-        country,
-        iso2,
-        lat,
-        lng,
-        pop,
-        elevation: Number.isFinite(elevation) ? elevation : null,
-        timezone,
-        feature,
-        placeLabel,
-        searchText: normalizeSearch(`${placeLabel} ${cityAscii} ${country} ${iso2} ${timezone}`),
-      };
-    }).filter(d => d.city && Number.isFinite(d.lat) && Number.isFinite(d.lng))
-      .sort((a, b) => b.pop - a.pop);
-  }
-
-  function labelForParts(city, cityAscii, adminName, country) {
-    const name = city || cityAscii || 'Unknown city';
-    const region = adminName ? `${adminName}, ${country}` : country;
-    return region ? `${name}, ${region}` : name;
+    return window.GeoNames.loadPlaces({ url: DATA_URL });
   }
 
   function labelForCity(city) {
-    return city ? city.placeLabel : '';
+    return window.GeoNames.labelForPlace(city);
   }
 
   function shortPlace(city) {
@@ -214,7 +124,7 @@
   }
 
   function normalizeSearch(value) {
-    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    return window.GeoNames.normalizeSearch(value);
   }
 
   function svg(tag, attrs = {}, text = '') {

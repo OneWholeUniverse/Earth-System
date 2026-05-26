@@ -73,94 +73,16 @@
     return Math.max(0, Math.min(1, v));
   }
 
-  function parseCSV(text) {
-    const rows = [];
-    let row = [];
-    let value = '';
-    let quoted = false;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      const next = text[i + 1];
-      if (ch === '"' && quoted && next === '"') {
-        value += '"';
-        i++;
-      } else if (ch === '"') {
-        quoted = !quoted;
-      } else if (ch === ',' && !quoted) {
-        row.push(value);
-        value = '';
-      } else if ((ch === '\n' || ch === '\r') && !quoted) {
-        if (ch === '\r' && next === '\n') i++;
-        row.push(value);
-        if (row.some(cell => cell.trim())) rows.push(row);
-        row = [];
-        value = '';
-      } else {
-        value += ch;
-      }
-    }
-    if (value || row.length) {
-      row.push(value);
-      rows.push(row);
-    }
-    return rows;
-  }
-
-  function parseTSV(text) {
-    return text.trimEnd().split(/\r?\n/).map(line => line.split('\t'));
-  }
-
   async function loadCities() {
-    const res = await fetch(DATA_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Could not load ${DATA_URL}: ${res.status}`);
-    const rows = DATA_URL.endsWith('.tsv') ? parseTSV(await res.text()) : parseCSV(await res.text());
-    const header = rows.shift().map(h => h.trim().toLowerCase());
-    const idx = key => header.indexOf(key);
-    const cityIdx = idx('name') >= 0 ? idx('name') : idx('city');
-    const asciiIdx = idx('ascii') >= 0 ? idx('ascii') : idx('city_ascii');
-    const adminIdx = idx('adminname') >= 0 ? idx('adminname') : idx('admin_name');
-    const countryIdx = idx('countryname') >= 0 ? idx('countryname') : idx('country');
-    const isoIdx = idx('country') >= 0 ? idx('country') : idx('iso2');
-    const latIdx = idx('lat');
-    const lngIdx = idx('lng');
-    const popIdx = idx('population');
-    const geonameIdx = idx('geonameid');
-    return rows.map((row, index) => {
-      const city = (row[cityIdx] || row[asciiIdx] || '').trim();
-      const cityAscii = (row[asciiIdx] || row[cityIdx] || '').trim();
-      const adminName = (row[adminIdx] || '').trim();
-      const country = (row[countryIdx] || '').trim();
-      const iso2 = (row[isoIdx] || '').trim();
-      const placeLabel = labelForParts(city, cityAscii, adminName, country);
-      return {
-        id: row[geonameIdx] ? `geonames-${row[geonameIdx]}` : `city-${index}`,
-        city,
-        cityAscii,
-        adminName,
-        country,
-        iso2,
-        placeLabel,
-        lat: Number(row[latIdx]),
-        lng: Number(row[lngIdx]),
-        pop: Number(row[popIdx]) || 0
-      };
-    }).filter(d => Number.isFinite(d.lat) && Number.isFinite(d.lng) && d.pop > 0)
-      .sort((a, b) => b.pop - a.pop);
-  }
-
-  function labelForParts(city, cityAscii, adminName, country) {
-    const name = city || cityAscii || 'Unknown city';
-    const region = adminName ? `${adminName}, ${country}` : country;
-    return region ? `${name}, ${region}` : name;
+    return window.GeoNames.loadPlaces({ url: DATA_URL, requirePopulation: true });
   }
 
   function labelForCity(d) {
-    if (!d) return '';
-    return d.placeLabel || (d.adminName ? `${d.city || d.cityAscii}, ${d.adminName}` : (d.city || d.cityAscii || `${d.lat.toFixed(2)}, ${d.lng.toFixed(2)}`));
+    return window.GeoNames.labelForPlace(d);
   }
 
   function normalizeSearch(value) {
-    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    return window.GeoNames.normalizeSearch(value);
   }
 
   function healthShare(lat, lng) {
