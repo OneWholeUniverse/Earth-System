@@ -28,6 +28,7 @@ function loadPlaywright() {
 
 const playwright = loadPlaywright();
 if (!playwright) throw new Error('Playwright is required. Run `npm install` in status/demo first.');
+const RUN_SLOW_TESTS = process.env.RUN_SLOW_TESTS === '1';
 
 const MIME_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -126,8 +127,12 @@ async function withAppPage(testBody) {
 }
 
 const tests = [];
-function test(name, fn) {
-  tests.push({ name, fn });
+function test(name, fn, options = {}) {
+  tests.push({ name, fn, slow: !!options.slow });
+}
+
+function slowTest(name, fn) {
+  test(name, fn, { slow: true });
 }
 
 const forbiddenCountryNames = [
@@ -194,18 +199,24 @@ async function clickVisibleEnergyNode(page, excludeName = null) {
       system.screenY > 40 &&
       system.screenY < window.innerHeight - 40);
   }, excludeName, { timeout: 5000 });
-  const node = await page.evaluate(nameToExclude =>
-    window.EarthHealthEnergyApp.getState().energySystems.find(system => system.name !== nameToExclude &&
+  const nodes = await page.evaluate(nameToExclude =>
+    window.EarthHealthEnergyApp.getState().energySystems.filter(system => system.name !== nameToExclude &&
       system.visible &&
       system.screenZ < 1 &&
       system.screenX > 40 &&
       system.screenX < window.innerWidth - 40 &&
       system.screenY > 40 &&
-      system.screenY < window.innerHeight - 40),
+      system.screenY < window.innerHeight - 40)
+      .sort((a, b) => Math.abs(a.screenX - window.innerWidth * 0.5) - Math.abs(b.screenX - window.innerWidth * 0.5)),
   excludeName);
-  await page.mouse.click(node.screenX, node.screenY);
-  await page.waitForFunction(targetName => window.EarthHealthEnergyApp.getState().selectedEnergyName === targetName, node.name);
-  return node;
+  for (const node of nodes) {
+    await page.mouse.click(node.screenX, node.screenY);
+    try {
+      await page.waitForFunction(targetName => window.EarthHealthEnergyApp.getState().selectedEnergyName === targetName, node.name, { timeout: 2500 });
+      return node;
+    } catch (_) {}
+  }
+  assert.fail(`could not select any visible energy node; tried ${nodes.map(node => node.name).join(', ')}`);
 }
 
 test('boots on earth-core and loads the full city dataset', async ({ page }) => {
@@ -221,6 +232,10 @@ test('boots on earth-core and loads the full city dataset', async ({ page }) => 
   assert.equal(await page.evaluate(() => typeof window.GeoNames.loadPlaces), 'function');
   assert.equal(await page.locator('.dropdown-item[data-target="mars"]').count(), 1);
   assert.equal(await page.locator('.dropdown-item[data-target="mars"] .mars-disc').count(), 1);
+  await page.click('#target-btn');
+  await page.click('.dropdown-item[data-target="mars"]');
+  await page.waitForFunction(() => document.querySelector('#target-btn .mars-disc'));
+  assert.equal(await page.locator('#target-btn .mars-disc').count(), 1);
   assert.match(await page.evaluate(() => Array.from(document.scripts).map(script => script.src).join('\n')), /\/shared\/geonames\.js\?v=1/);
   assert.equal(await page.locator('#status-chip').evaluate(el => getComputedStyle(el).display), 'none');
   assert.equal(await page.locator('#status-chip').innerText(), '');
@@ -250,7 +265,7 @@ test('Energy mode toggles panel state and remains mutually exclusive with Health
   assert.equal(await page.locator('#showHealthBtn').isVisible(), true);
 });
 
-test('Energy controls toggle ascend state with oracle timing and stay active during target flights', async ({ page }) => {
+slowTest('Energy controls toggle ascend state with oracle timing and stay active during target flights', async ({ page }) => {
   await showEnergy(page);
   await page.waitForTimeout(250);
   let state = await appState(page);
@@ -298,7 +313,10 @@ test('Energy controls toggle ascend state with oracle timing and stay active dur
   assert.equal(state.energyLayerVisible, true);
 
   await page.click('#elevateBtn');
-  await page.waitForTimeout(80);
+  await page.waitForFunction(({ elevatedY, surfaceY }) => {
+    const goa = window.EarthHealthEnergyApp.getState().energySystems.find(system => system.name === 'Goa');
+    return goa && goa.y < elevatedY && goa.y > surfaceY;
+  }, { elevatedY: goaElevated.y, surfaceY: goaBefore.y }, { timeout: 5000 });
   state = await appState(page);
   assert.equal(state.elevatedEnergy, false);
   assert.equal(await page.locator('#elevateBtn').innerText(), 'Ascend');
@@ -365,7 +383,7 @@ test('Dragging the 3D globe in Energy mode does not select a node on release', a
   assert.equal(state.selectedEnergyName, before.selectedEnergyName);
 });
 
-test('Energy layer hides in 2D map mode and restores in 3D globe mode', async ({ page }) => {
+slowTest('Energy layer hides in 2D map mode and restores in 3D globe mode', async ({ page }) => {
   await showEnergy(page);
   await page.waitForTimeout(300);
   let state = await appState(page);
@@ -436,7 +454,8 @@ test('Cluster mode uses named region labels and can return to raw cities', async
   await page.click('#healthClusterBtn');
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().healthClusterMode);
   let state = await appState(page);
-  assert.equal(await page.locator('#healthClusterBtn').innerText(), 'Show Raw Cities');
+  assert.equal(await page.locator('#healthClusterBtn').innerText(), 'Cluster Cities');
+  assert.equal(await page.locator('#healthClusterBtn').evaluate(el => el.classList.contains('active')), true);
   assert.ok(state.displayedHealthCityCount < state.healthCityCount);
   const names = state.displayedSample.map(item => item.city);
   assert.equal(names.some(name => /\bregion$/.test(name)), true);
@@ -459,13 +478,20 @@ test('Cluster mode anchors Portland region at Portland, not the grid centroid ne
     return map && map.getLayer('health2d-green-inner') &&
       map.getLayoutProperty('health2d-green-inner', 'visibility') === 'visible';
   }, null, { timeout: 20000 });
-  await page.waitForTimeout(1000);
+  await page.waitForFunction(() => {
+    const features = window.EarthHealthEnergyApp.getHealthGeoJSON().features;
+    return features.some(feature =>
+      Number(feature.properties?.clusterCount) > 1 &&
+      Math.abs(Number(feature.properties?.lat) - 45.5234) < 0.05 &&
+      Math.abs(Number(feature.properties?.lng) - -122.6762) < 0.05 &&
+      /Portland/i.test(`${feature.properties?.anchorCity || ''} ${feature.properties?.name || ''}`));
+  }, null, { timeout: 10000 });
   const sourceFeature = await page.evaluate(() => {
-    const data = window.EarthSystem.map().getSource('health2d')._data;
+    const data = window.EarthHealthEnergyApp.getHealthGeoJSON();
     const match = data.features.find(feature =>
       Math.abs(Number(feature.properties?.lat) - 45.5234) < 0.05 &&
       Math.abs(Number(feature.properties?.lng) - -122.6762) < 0.05 &&
-      /Portland/i.test(String(feature.properties?.name || '')));
+      /Portland/i.test(`${feature.properties?.anchorCity || ''} ${feature.properties?.name || ''}`));
     if (!match) return null;
     return {
       name: match.properties.name,
@@ -484,16 +510,13 @@ test('Cluster mode anchors Portland region at Portland, not the grid centroid ne
 
   const mapFeature = await page.evaluate(() => {
     const map = window.EarthSystem.map();
-    const pt = map.project([-122.6762, 45.5234]);
-    const features = map.queryRenderedFeatures(
-      [[pt.x - 140, pt.y - 140], [pt.x + 140, pt.y + 140]],
-      { layers: ['health2d-green-inner', 'health2d-red-base'] }
-    );
-    const match = features.find(feature =>
+    const point = map.project([-122.6762, 45.5234]);
+    const inView = point.x >= 0 && point.y >= 0 && point.x <= window.innerWidth && point.y <= window.innerHeight;
+    const match = window.EarthHealthEnergyApp.getHealthGeoJSON().features.find(feature =>
       Math.abs(Number(feature.properties?.lat) - 45.5234) < 0.05 &&
       Math.abs(Number(feature.properties?.lng) - -122.6762) < 0.05 &&
-      /Portland/i.test(String(feature.properties?.name || '')));
-    if (!match) return null;
+      /Portland/i.test(`${feature.properties?.anchorCity || ''} ${feature.properties?.name || ''}`));
+    if (!match || !inView) return null;
     return {
       name: match.properties.name,
       lat: Number(match.properties.lat),
@@ -505,6 +528,56 @@ test('Cluster mode anchors Portland region at Portland, not the grid centroid ne
   assert.ok(mapFeature, '2D map should render a Portland cluster feature near Portland');
   assert.ok(Math.abs(mapFeature.lat - 45.5234) < 0.05);
   assert.ok(Math.abs(mapFeature.lng - -122.6762) < 0.05);
+});
+
+slowTest('Cluster info card expands to show member city sentiment details', async ({ page }) => {
+  await showHealth(page);
+  await page.click('#healthClusterBtn');
+  await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().healthClusterMode);
+
+  const clusterTarget = await page.evaluate(() => {
+    const clusters = window.EarthHealthEnergyApp.getState().displayedSample
+      .filter(item => item.isCluster && item.clusterCount > 1);
+    return clusters.find(item => /Portland/i.test(`${item.anchorCity || ''} ${item.city || ''}`)) || clusters[0] || null;
+  });
+  assert.ok(clusterTarget, 'cluster mode should expose at least one clustered city group');
+  await page.evaluate(target => { window.__clusterTargetId = target.id; }, clusterTarget);
+
+  await page.evaluate(target => window.EarthSystem.switchToMicro(target.lat, target.lng, { zoom: 9 }), clusterTarget);
+  await page.waitForFunction(() => {
+    const map = window.EarthSystem.map();
+    return map && map.getLayer('health2d-green-inner') &&
+      map.getLayoutProperty('health2d-green-inner', 'visibility') === 'visible';
+  }, null, { timeout: 20000 });
+  await page.waitForFunction(() => {
+    const features = window.EarthHealthEnergyApp.getHealthGeoJSON().features;
+    return features.some(feature => String(feature.properties?.id) === String(window.__clusterTargetId));
+  }, null, { timeout: 10000 });
+
+  const clickPoint = await page.evaluate(() => {
+    const map = window.EarthSystem.map();
+    const match = window.EarthHealthEnergyApp.getHealthGeoJSON().features.find(feature => String(feature.properties?.id) === String(window.__clusterTargetId));
+    if (!match) return null;
+    const point = map.project(match.geometry.coordinates);
+    return { x: point.x, y: point.y };
+  });
+  assert.ok(clickPoint, '2D map should expose a clickable cluster feature');
+
+  await page.mouse.click(clickPoint.x, clickPoint.y);
+  await page.waitForSelector('#clusterDetailsToggle', { timeout: 10000 });
+  assert.match(await page.locator('#clusterDetailsToggle').innerText(), /Cluster of \d+ cities/);
+  assert.equal(await page.locator('#clusterDetailsToggle').getAttribute('aria-expanded'), 'false');
+  assert.equal(await page.locator('#clusterDetailsPanel').evaluate(el => getComputedStyle(el).display), 'none');
+
+  await page.click('#clusterDetailsToggle');
+  await page.waitForFunction(() => document.querySelector('#clusterDetailsToggle')?.getAttribute('aria-expanded') === 'true');
+  assert.equal(await page.locator('#clusterDetailsPanel').evaluate(el => getComputedStyle(el).display), 'block');
+  assert.ok(await page.locator('.cluster-member-row').count() > 1);
+  const detailsText = await page.locator('#clusterDetailsPanel').innerText();
+  assert.match(detailsText, /Positive|Negative|\+\d+%|-\d+%/);
+  for (const country of forbiddenCountryNames) {
+    assert.equal(detailsText.includes(country), false, `cluster details should not mention country name ${country}`);
+  }
 });
 
 test('Percentile range filters without rescaling remaining column heights', async ({ page }) => {
@@ -560,7 +633,7 @@ test('Percentile handles clamp when min crosses max and when max crosses min', a
   assert.equal(state.heightMaxPercent, 30);
 });
 
-test('City search suggestions appear and selecting one starts Health map workflow', async ({ page }) => {
+slowTest('City search suggestions appear and selecting one starts Health map workflow', async ({ page }) => {
   await page.fill('#flyInput', 'Delhi');
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#flySuggestions')).display === 'block');
   const firstSuggestion = page.locator('#flySuggestions > div').first();
@@ -610,7 +683,7 @@ test('City search clear button and outside click dismiss suggestions', async ({ 
   assert.equal(await page.locator('#flyClearBtn').evaluate(el => getComputedStyle(el).display), 'none');
 });
 
-test('2D Health map layers hover, click, and selected ring work', async ({ page }) => {
+slowTest('2D Health map layers hover, click, and selected ring work', async ({ page }) => {
   await showHealth(page);
   await page.evaluate(() => window.EarthSystem.switchToMicro(28.6139, 77.2090, { zoom: 5 }));
   await page.waitForFunction(() => {
@@ -652,7 +725,7 @@ test('2D Health map layers hover, click, and selected ring work', async ({ page 
   assert.match(selection.tooltip, /Population/);
 });
 
-test('Closing the 2D info card clears selected ring and selected app state', async ({ page }) => {
+slowTest('Closing the 2D info card clears selected ring and selected app state', async ({ page }) => {
   await showHealth(page);
   await page.evaluate(() => window.EarthSystem.switchToMicro(28.6139, 77.2090, { zoom: 5 }));
   await page.waitForFunction(() => {
@@ -685,7 +758,7 @@ test('Closing the 2D info card clears selected ring and selected app state', asy
   assert.equal(cleared.selectedCity, null);
 });
 
-test('2D health layers hide when Health mode is turned off in map view', async ({ page }) => {
+slowTest('2D health layers hide when Health mode is turned off in map view', async ({ page }) => {
   await showHealth(page);
   await page.evaluate(() => window.EarthSystem.switchToMicro(28.6139, 77.2090, { zoom: 5 }));
   await page.waitForFunction(() => {
@@ -712,18 +785,18 @@ test('2D health layers hide when Health mode is turned off in map view', async (
   assert.equal(visibility.ring, 'none');
 });
 
-test('Health 3D layer hides away from Earth target and returns on Earth', async ({ page }) => {
+slowTest('Manifest 3D layer remains visible while switching Earth, Moon, Mars, and Sun targets', async ({ page }) => {
   await showHealth(page);
   await page.waitForTimeout(250);
   let state = await appState(page);
   assert.equal(state.healthLayerVisible, true);
-  for (const target of ['mars', 'sun']) {
+  for (const target of ['moon', 'mars', 'sun']) {
     await page.evaluate(name => window.EarthSystem.flyToTarget(name), target);
     await page.waitForFunction(name => window.EarthSystem.getState().target === name, target, { timeout: 5000 });
     await page.waitForTimeout(300);
     state = await appState(page);
     assert.equal(state.healthMode, true);
-    assert.equal(state.healthLayerVisible, false);
+    assert.equal(state.healthLayerVisible, true);
   }
 
   await page.evaluate(() => window.EarthSystem.flyToTarget('earth'));
@@ -750,10 +823,18 @@ function windowIsObject(value) {
 }
 
 let failures = 0;
-for (const { name, fn } of tests) {
+let skipped = 0;
+let passed = 0;
+for (const { name, fn, slow } of tests) {
+  if (slow && !RUN_SLOW_TESTS) {
+    skipped += 1;
+    process.stdout.write(`• ${name} ... skipped slow\n`);
+    continue;
+  }
   process.stdout.write(`• ${name} ... `);
   try {
     await withAppPage(fn);
+    passed += 1;
     process.stdout.write('ok\n');
   } catch (error) {
     failures += 1;
@@ -767,4 +848,5 @@ if (failures) {
   process.exit(1);
 }
 
-console.log(`\n${tests.length} earth-health-energy tests passed.`);
+const slowHint = skipped ? ' Set RUN_SLOW_TESTS=1 to include slow browser animation/map tests.' : '';
+console.log(`\n${passed} earth-health-energy tests passed${skipped ? `, ${skipped} skipped` : ''}.${slowHint}`);

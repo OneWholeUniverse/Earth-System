@@ -40,6 +40,7 @@
   let healthLayer = null;
   let healthGeoJSON = { type: 'FeatureCollection', features: [] };
   let mapHealthInteractionsReady = false;
+  let flyRequestId = 0;
 
   const els = {
     energyBtn: document.getElementById('showEnergyBtn'),
@@ -83,6 +84,16 @@
     return d.adminName ? `${name}, ${d.adminName}` : name;
   }
 
+  function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[char]));
+  }
+
   function normalizeSearch(value) {
     return window.GeoNames.normalizeSearch(value);
   }
@@ -120,7 +131,8 @@
           lngSum: 0,
           count: 0,
           largestCity: null,
-          largestPop: -Infinity
+          largestPop: -Infinity,
+          members: []
         });
       }
       const cell = cells.get(key);
@@ -128,6 +140,7 @@
       cell.latSum += d.lat * d.pop;
       cell.lngSum += d.lng * d.pop;
       cell.count += 1;
+      cell.members.push(d);
       if (d.pop > cell.largestPop) {
         cell.largestPop = d.pop;
         cell.largestCity = d;
@@ -145,13 +158,31 @@
         country: d.largestCity.country || null,
         iso2: d.largestCity.iso2 || null,
         placeLabel,
+        anchorCity: d.largestCity.city || d.largestCity.cityAscii || '',
         lat: d.largestCity.lat,
         lng: d.largestCity.lng,
         centroidLat: d.latSum / d.pop,
         centroidLng: d.lngSum / d.pop,
         pop: d.pop,
         isCluster: d.count > 1,
-        clusterCount: d.count
+        clusterCount: d.count,
+        clusterMembers: d.members
+          .slice()
+          .sort((a, b) => b.pop - a.pop)
+          .map(member => {
+            const greenShare = healthShare(member.lat, member.lng);
+            return {
+              id: member.id,
+              city: member.city,
+              cityAscii: member.cityAscii,
+              adminName: member.adminName || null,
+              lat: member.lat,
+              lng: member.lng,
+              pop: member.pop,
+              greenShare,
+              redShare: 1 - greenShare
+            };
+          })
       };
     }).sort((a, b) => b.pop - a.pop);
   }
@@ -171,7 +202,8 @@
           popNorm: populationNorm(d.pop),
           greenShare: healthShare(d.lat, d.lng),
           isCluster: !!d.isCluster,
-          clusterCount: d.clusterCount || 1
+          clusterCount: d.clusterCount || 1,
+          anchorCity: d.anchorCity || d.city || d.cityAscii || ''
         }
       }))
     };
@@ -219,7 +251,9 @@
     els.healthBtn.style.display = energyMode ? 'none' : 'block';
     els.healthPositiveBtn.classList.toggle('active', healthOnlyPositive);
     els.healthNegativeBtn.classList.toggle('active', healthOnlyNegative);
-    els.healthClusterBtn.textContent = healthClusterMode ? 'Show Raw Cities' : 'Cluster Cities';
+    els.healthClusterBtn.classList.toggle('active', healthClusterMode);
+    els.healthClusterBtn.textContent = 'Cluster Cities';
+    if (healthLayer && typeof healthLayer.applyVisualState === 'function') healthLayer.applyVisualState();
     els.heightRangeReadout.textContent = `Showing ${heightMinPercent}th - ${heightMaxPercent}th percentile column height`;
     els.heightRangeCount.textContent = displayedHealthCities.length
       ? `${displayedHealthCities.length.toLocaleString()} displayed of ${healthCities.length.toLocaleString()} cities`
@@ -686,8 +720,32 @@
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const baseGeometry = new THREE.CylinderGeometry(1, 1, 1, 18, 1, false);
-    const greenMaterial = new THREE.MeshBasicMaterial({ color: 0x16a34a, transparent: true, opacity: 0.92 });
-    const redMaterial = new THREE.MeshBasicMaterial({ color: 0xdc2626, transparent: true, opacity: 0.88 });
+    function makeColumnMaterial() {
+      return new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        vertexShader: `
+          attribute vec3 instanceColumnColor;
+          attribute float instanceColumnAlpha;
+          varying vec3 vColumnColor;
+          varying float vColumnAlpha;
+          void main() {
+            vColumnColor = instanceColumnColor;
+            vColumnAlpha = instanceColumnAlpha;
+            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vColumnColor;
+          varying float vColumnAlpha;
+          void main() {
+            gl_FragColor = vec4(vColumnColor, vColumnAlpha);
+          }
+        `
+      });
+    }
+    const greenMaterial = makeColumnMaterial();
+    const redMaterial = makeColumnMaterial();
     const selectedRing = new THREE.Mesh(
       new THREE.TorusGeometry(0.035, 0.0022, 8, 48),
       new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false })
@@ -698,7 +756,57 @@
     const tmpScale = new THREE.Vector3();
     let greenInstances = null;
     let redInstances = null;
+    let greenColorAttribute = null;
+    let redColorAttribute = null;
+    let greenAlphaAttribute = null;
+    let redAlphaAttribute = null;
     let pickTargets = [];
+    const greenColor = new THREE.Color(0x16a34a);
+    const redColor = new THREE.Color(0xdc2626);
+    const disabledColor = new THREE.Color(0x9aa3af);
+
+    function sameMeta(a, b) {
+      if (!a || !b) return false;
+      if (a.id != null && b.id != null) return String(a.id) === String(b.id);
+      return Math.abs(Number(a.lat) - Number(b.lat)) < 0.0001 && Math.abs(Number(a.lng) - Number(b.lng)) < 0.0001;
+    }
+
+    function applyVisualState() {
+      if (!greenInstances || !redInstances) return;
+      const greenDisabled = healthOnlyNegative;
+      const redDisabled = healthOnlyPositive;
+      const hasSelection = !!selectedHealthMeta;
+      const count = greenInstances.count;
+      let matchedSelection = false;
+      const writeColor = (array, index, color) => {
+        const offset = index * 3;
+        array[offset] = color.r;
+        array[offset + 1] = color.g;
+        array[offset + 2] = color.b;
+      };
+      for (let i = 0; i < count; i++) {
+        const meta = greenInstances.userData.metas[i];
+        const activeColumn = hasSelection && sameMeta(meta, selectedHealthMeta);
+        if (activeColumn) matchedSelection = true;
+        writeColor(greenColorAttribute.array, i, greenDisabled ? disabledColor : greenColor);
+        writeColor(redColorAttribute.array, i, redDisabled ? disabledColor : redColor);
+        greenAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0 : greenDisabled ? 0 : 0.92;
+        redAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0 : redDisabled ? 0.3 : 0.88;
+      }
+      if (hasSelection && !matchedSelection) {
+        selectedHealthMeta = null;
+        for (let i = 0; i < count; i++) {
+          writeColor(greenColorAttribute.array, i, greenDisabled ? disabledColor : greenColor);
+          writeColor(redColorAttribute.array, i, redDisabled ? disabledColor : redColor);
+          greenAlphaAttribute.array[i] = greenDisabled ? 0 : 0.92;
+          redAlphaAttribute.array[i] = redDisabled ? 0.3 : 0.88;
+        }
+      }
+      greenColorAttribute.needsUpdate = true;
+      redColorAttribute.needsUpdate = true;
+      greenAlphaAttribute.needsUpdate = true;
+      redAlphaAttribute.needsUpdate = true;
+    }
 
     function rebuild() {
       while (group.children.length) {
@@ -712,8 +820,18 @@
         updateMapHealthSource();
         return;
       }
-      greenInstances = new THREE.InstancedMesh(baseGeometry, greenMaterial, displayedHealthCities.length);
-      redInstances = new THREE.InstancedMesh(baseGeometry, redMaterial, displayedHealthCities.length);
+      const greenGeometry = baseGeometry.clone();
+      const redGeometry = baseGeometry.clone();
+      greenColorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length * 3), 3);
+      redColorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length * 3), 3);
+      greenAlphaAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length), 1);
+      redAlphaAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length), 1);
+      greenGeometry.setAttribute('instanceColumnColor', greenColorAttribute);
+      redGeometry.setAttribute('instanceColumnColor', redColorAttribute);
+      greenGeometry.setAttribute('instanceColumnAlpha', greenAlphaAttribute);
+      redGeometry.setAttribute('instanceColumnAlpha', redAlphaAttribute);
+      greenInstances = new THREE.InstancedMesh(greenGeometry, greenMaterial, displayedHealthCities.length);
+      redInstances = new THREE.InstancedMesh(redGeometry, redMaterial, displayedHealthCities.length);
       greenInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       redInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       greenInstances.userData.metas = [];
@@ -741,31 +859,30 @@
 
         tmpQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
 
-        const greenCenter = pos.clone().add(normal.clone().multiplyScalar(greenHeight * 0.5));
-        tmpScale.set(radius, greenHeight, radius);
-        tmpMatrix.compose(greenCenter, tmpQuat, tmpScale);
-        greenInstances.setMatrixAt(index, tmpMatrix);
-        greenInstances.userData.metas[index] = meta;
-
-        const redCenter = pos.clone().add(normal.clone().multiplyScalar(greenHeight + redHeight * 0.5));
+        const redCenter = pos.clone().add(normal.clone().multiplyScalar(redHeight * 0.5));
         tmpScale.set(radius, redHeight, radius);
         tmpMatrix.compose(redCenter, tmpQuat, tmpScale);
         redInstances.setMatrixAt(index, tmpMatrix);
         redInstances.userData.metas[index] = meta;
+
+        const greenCenter = pos.clone().add(normal.clone().multiplyScalar(redHeight + greenHeight * 0.5));
+        tmpScale.set(radius, greenHeight, radius);
+        tmpMatrix.compose(greenCenter, tmpQuat, tmpScale);
+        greenInstances.setMatrixAt(index, tmpMatrix);
+        greenInstances.userData.metas[index] = meta;
       });
       greenInstances.instanceMatrix.needsUpdate = true;
       redInstances.instanceMatrix.needsUpdate = true;
       group.add(greenInstances, redInstances, selectedRing);
       pickTargets = [greenInstances, redInstances];
+      applyVisualState();
       updateMapHealthSource();
     }
 
     function update() {
-      group.visible = healthMode && api.getState().mode === 'globe' && api.getState().target === 'earth';
-      if (greenInstances) greenInstances.visible = group.visible && !healthOnlyNegative;
-      if (redInstances) redInstances.visible = group.visible && !healthOnlyPositive;
-      if (greenInstances) greenInstances.material.opacity += (((selectedHealthMeta ? 0.76 : 0.92) - greenInstances.material.opacity) * 0.08);
-      if (redInstances) redInstances.material.opacity += (((selectedHealthMeta ? 0.72 : 0.88) - redInstances.material.opacity) * 0.08);
+      group.visible = healthMode && api.getState().mode === 'globe';
+      if (greenInstances) greenInstances.visible = group.visible;
+      if (redInstances) redInstances.visible = group.visible;
       if (selectedRing.visible && selectedHealthMeta) {
         selectedRing.position.copy(selectedHealthMeta.topPosition);
         selectedRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), selectedHealthMeta.normal);
@@ -794,14 +911,18 @@
         const base = api.latLngToVec(meta.lat, meta.lng, 1.003);
         const normal = base.clone().normalize();
         const popNorm = populationNorm(meta.pop || 1);
+        const totalHeight = 0.01 + popNorm * 0.24;
         meta.normal = normal;
         meta.radius = meta.radius || 0.0025 + popNorm * 0.0095;
-        meta.topPosition = base.clone().add(normal.clone().multiplyScalar(0.01 + popNorm * 0.24));
+        meta.basePosition = base;
+        meta.totalHeight = totalHeight;
+        meta.topPosition = base.clone().add(normal.clone().multiplyScalar(totalHeight));
       }
       selectedRing.visible = true;
       selectedRing.position.copy(meta.topPosition);
       selectedRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), meta.normal);
       selectedRing.scale.setScalar(Math.max(0.7, meta.radius * 34));
+      applyVisualState();
     }
 
     const canvas = document.getElementById('c');
@@ -833,7 +954,7 @@
       }
     });
 
-    return { threeObject: group, update, rebuild, showSelectionRing };
+    return { threeObject: group, update, rebuild, showSelectionRing, applyVisualState };
   }
 
   function registerHealthMapLayer() {
@@ -922,7 +1043,7 @@
 
   function metaFromMapFeature(feature) {
     const p = feature && feature.properties ? feature.properties : {};
-    return {
+    const meta = {
       id: p.id,
       city: p.name,
       lat: Number(p.lat),
@@ -933,6 +1054,15 @@
       isCluster: p.isCluster === true || p.isCluster === 'true' || p.isCluster === 1 || p.isCluster === '1' || Number(p.clusterCount) > 1,
       clusterCount: Number(p.clusterCount) || 1
     };
+    const source = displayedHealthCities.find(d => String(d.id) === String(meta.id));
+    if (source) {
+      meta.city = source.city || meta.city;
+      meta.cityAscii = source.cityAscii || meta.cityAscii;
+      meta.adminName = source.adminName || null;
+      meta.placeLabel = source.placeLabel || meta.placeLabel;
+      meta.clusterMembers = source.clusterMembers || [];
+    }
+    return meta;
   }
 
   function set2DSelectedHealthDisk(meta) {
@@ -958,6 +1088,31 @@
     if (!map || mapHealthInteractionsReady || !map.getLayer('health2d-red-base') || !map.getLayer('health2d-green-inner')) return;
     ensure2DSelectedLayer();
     mapHealthInteractionsReady = true;
+    const healthMapLayers = ['health2d-red-base', 'health2d-green-inner'];
+    function nearestHealthFeatureAtPoint(point, maxDistance = 42) {
+      if (!healthGeoJSON || !Array.isArray(healthGeoJSON.features)) return null;
+      let closest = null;
+      let closestDistanceSq = maxDistance * maxDistance;
+      healthGeoJSON.features.forEach(feature => {
+        const coordinates = feature && feature.geometry ? feature.geometry.coordinates : null;
+        if (!Array.isArray(coordinates) || coordinates.length < 2) return;
+        const projected = map.project(coordinates);
+        const dx = projected.x - point.x;
+        const dy = projected.y - point.y;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq <= closestDistanceSq) {
+          closestDistanceSq = distanceSq;
+          closest = feature;
+        }
+      });
+      return closest;
+    }
+    function selectMapFeature(feature, event) {
+      const meta = metaFromMapFeature(feature);
+      selectedHealthMeta = meta;
+      set2DSelectedHealthDisk(meta);
+      selectHealthMeta(meta, event.originalEvent.clientX, event.originalEvent.clientY);
+    }
     ['health2d-red-base', 'health2d-green-inner'].forEach(layerId => {
       map.on('mousemove', layerId, e => {
         if (!healthMode || api.getState().mode !== 'map' || !e.features || !e.features.length) return;
@@ -969,14 +1124,13 @@
         map.getCanvas().style.cursor = '';
         hideHoverFlag();
       });
-      map.on('click', layerId, e => {
-        if (!healthMode || api.getState().mode !== 'map' || !e.features || !e.features.length) return;
-        e.preventDefault();
-        const meta = metaFromMapFeature(e.features[0]);
-        selectedHealthMeta = meta;
-        set2DSelectedHealthDisk(meta);
-        selectHealthMeta(meta, e.originalEvent.clientX, e.originalEvent.clientY);
-      });
+    });
+    map.on('click', e => {
+      if (!healthMode || api.getState().mode !== 'map') return;
+      const features = map.queryRenderedFeatures(e.point, { layers: healthMapLayers });
+      const feature = features[0] || nearestHealthFeatureAtPoint(e.point);
+      if (!feature) return;
+      selectMapFeature(feature, e);
     });
   }
 
@@ -1020,9 +1174,45 @@
     els.hoverFlag.style.display = 'none';
   }
 
+  function clusterDetailsHTML(meta) {
+    if (!meta.isCluster) return '';
+    const members = Array.isArray(meta.clusterMembers) ? meta.clusterMembers : [];
+    const rows = members.length ? members.map(member => {
+      const green = Number.isFinite(member.greenShare) ? member.greenShare : healthShare(member.lat, member.lng);
+      const greenPct = Math.round(green * 100);
+      const redPct = Math.max(0, 100 - greenPct);
+      return `
+        <div class="cluster-member-row" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.08);">
+          <div style="min-width:0;">
+            <div style="font-size:11px;font-weight:650;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(labelForCity(member))}</div>
+            <div style="font-size:9px;color:#91a4c7;">${Math.round(member.pop || 0).toLocaleString()} people</div>
+          </div>
+          <div style="width:96px;">
+            <div style="height:7px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.1);box-shadow:inset 0 0 8px rgba(0,0,0,.18);">
+              <div style="height:100%;width:${greenPct}%;background:linear-gradient(90deg,#16a34a,#34d399);float:left;"></div>
+              <div style="height:100%;width:${redPct}%;background:linear-gradient(90deg,#dc2626,#fb7185);float:left;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:8px;font-weight:650;">
+              <span style="color:#86efac;">+${greenPct}%</span>
+              <span style="color:#fca5a5;">-${redPct}%</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('') : '<div style="padding:8px 0;font-size:10px;color:#91a4c7;">No city details available.</div>';
+    return `
+      <button id="clusterDetailsToggle" aria-expanded="false" style="appearance:none;width:100%;border:0;background:rgba(250,204,21,.1);color:#fde047;border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font-size:11px;font-weight:750;text-align:left;">
+        <span>Cluster of ${(meta.clusterCount || members.length || 1).toLocaleString()} cities</span>
+        <span id="clusterDetailsChevron" style="font-size:10px;color:#fff7bd;">Show</span>
+      </button>
+      <div id="clusterDetailsPanel" style="display:none;margin-top:7px;max-height:188px;overflow:auto;padding:0 3px 0 1px;border-radius:8px;">
+        ${rows}
+      </div>`;
+  }
+
   function selectHealthMeta(meta, x = window.innerWidth * 0.5, y = window.innerHeight * 0.5) {
     selectedHealthMeta = meta;
     set2DSelectedHealthDisk(meta);
+    if (healthLayer && typeof healthLayer.applyVisualState === 'function') healthLayer.applyVisualState();
     const green = meta.greenShare || healthShare(meta.lat, meta.lng);
     const red = meta.redShare || 1 - green;
     const city = labelForCity(meta);
@@ -1032,14 +1222,14 @@
       <button class="pillarTooltipClose" id="pillarTooltipCloseBtn" aria-label="Close info card">×</button>
       <div style="display:flex;flex-direction:column;gap:9px;padding-right:18px;">
         <div style="font-size:17px;font-weight:700;color:#ffffff;line-height:1.15;">
-          ${city}
+          ${escapeHTML(city)}
         </div>
 
         <div style="font-size:11px;color:#bcd0f5;">
           ${meta.lat.toFixed(4)}, ${meta.lng.toFixed(4)}
         </div>
 
-        ${meta.isCluster ? `<div style="font-size:11px;color:#facc15;">Cluster of ${(meta.clusterCount || 1).toLocaleString()} cities</div>` : ''}
+        ${clusterDetailsHTML(meta)}
 
         <div style="height:1px;background:linear-gradient(90deg, rgba(255,255,255,.16), rgba(255,255,255,.04));margin:2px 0;"></div>
 
@@ -1066,8 +1256,11 @@
     els.tooltip.style.display = 'block';
     els.tooltip.style.opacity = '1';
     els.tooltip.style.pointerEvents = 'auto';
-    els.tooltip.style.left = Math.min(window.innerWidth - 260, x + 14) + 'px';
-    els.tooltip.style.top = Math.min(window.innerHeight - 190, y + 14) + 'px';
+    els.tooltip.style.width = meta.isCluster ? '380px' : '';
+    const tooltipWidth = meta.isCluster ? 420 : 260;
+    const tooltipHeight = meta.isCluster ? 330 : 190;
+    els.tooltip.style.left = Math.max(12, Math.min(window.innerWidth - tooltipWidth, x + 14)) + 'px';
+    els.tooltip.style.top = Math.max(12, Math.min(window.innerHeight - tooltipHeight, y + 14)) + 'px';
 
     requestAnimationFrame(() => {
       const greenBar = document.getElementById('tooltipGreenBar');
@@ -1083,6 +1276,18 @@
         clearHealthSelection();
       });
     }
+    const clusterToggle = document.getElementById('clusterDetailsToggle');
+    const clusterPanel = document.getElementById('clusterDetailsPanel');
+    const clusterChevron = document.getElementById('clusterDetailsChevron');
+    if (clusterToggle && clusterPanel) {
+      clusterToggle.addEventListener('click', event => {
+        event.stopPropagation();
+        const expanded = clusterToggle.getAttribute('aria-expanded') === 'true';
+        clusterToggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        clusterPanel.style.display = expanded ? 'none' : 'block';
+        if (clusterChevron) clusterChevron.textContent = expanded ? 'Show' : 'Hide';
+      });
+    }
   }
 
   function clearHealthSelection() {
@@ -1091,6 +1296,7 @@
     hideHoverFlag();
     set2DSelectedHealthDisk(null);
     if (healthLayer && healthLayer.showSelectionRing) healthLayer.showSelectionRing(null);
+    if (healthLayer && typeof healthLayer.applyVisualState === 'function') healthLayer.applyVisualState();
   }
 
   function findFlyMatches(query) {
@@ -1127,8 +1333,40 @@
     els.flySuggestions.style.display = 'block';
   }
 
+  function easeOutToGlobeSpace(duration = 1100) {
+    return new Promise(resolve => {
+      if (!api || api.getState().mode !== 'map') {
+        resolve();
+        return;
+      }
+      api.switchToMacro();
+      const start = api.getState().orbit;
+      const target = {
+        radius: Math.max(start.radius, 2.85),
+        theta: start.theta,
+        phi: Math.max(-0.55, Math.min(0.55, start.phi || 0.22))
+      };
+      const startTime = performance.now();
+      function step() {
+        const raw = Math.min(1, (performance.now() - startTime) / duration);
+        const p = raw < 0.5 ? 4 * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 3) / 2;
+        api.setOrbit({
+          radius: start.radius + (target.radius - start.radius) * p,
+          theta: start.theta + (target.theta - start.theta) * p,
+          phi: start.phi + (target.phi - start.phi) * p
+        });
+        if (raw < 1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
   function flyToDatum(d) {
     if (!d) return;
+    const requestId = ++flyRequestId;
+    const wasMapMode = api && api.getState().mode === 'map';
+    clearHealthSelection();
     els.flyInput.value = labelForCity(d);
     els.flySuggestions.style.display = 'none';
     if (!healthMode) {
@@ -1137,12 +1375,18 @@
       showPanel('health');
       updateButtons();
     }
-    api.flyToLocation({ lat: d.lat, lng: d.lng, altitude: 1.39, mapZoom: FLY_TO_CITY_2D_ZOOM, enterMap: true, duration: 7200 });
+    const startFlight = () => {
+      if (requestId !== flyRequestId) return;
+      api.flyToLocation({ lat: d.lat, lng: d.lng, altitude: 1.39, mapZoom: FLY_TO_CITY_2D_ZOOM, enterMap: true, duration: 7200 });
+    };
+    if (wasMapMode) easeOutToGlobeSpace().then(startFlight);
+    else startFlight();
     setTimeout(() => {
+      if (requestId !== flyRequestId) return;
       const meta = { ...d, greenShare: healthShare(d.lat, d.lng), redShare: 1 - healthShare(d.lat, d.lng) };
       if (healthLayer && healthLayer.showSelectionRing) healthLayer.showSelectionRing(meta);
       selectHealthMeta(meta);
-    }, 7600);
+    }, (wasMapMode ? 1100 : 0) + 7600);
   }
 
   function refreshHealth() {
@@ -1204,6 +1448,7 @@
         pop: d.pop,
         isCluster: !!d.isCluster,
         clusterCount: d.clusterCount || 1,
+        anchorCity: d.anchorCity || d.city || d.cityAscii || '',
         centroidLat: d.centroidLat ?? null,
         centroidLng: d.centroidLng ?? null,
         height: 0.01 + populationNorm(d.pop) * 0.24
@@ -1212,7 +1457,8 @@
   }
 
   window.EarthHealthEnergyApp = {
-    getState: getAppState
+    getState: getAppState,
+    getHealthGeoJSON: () => healthGeoJSON
   };
 
   async function boot(event) {
@@ -1251,6 +1497,7 @@
         energyMode = false;
         resetEnergyElevation();
         selectedEnergySystem = null;
+        clearHealthSelection();
         showPanel('health');
         if (els.openFiltersBtn) els.openFiltersBtn.classList.remove('visible');
       } else {

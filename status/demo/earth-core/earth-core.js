@@ -35,15 +35,32 @@
   const ORBIT_ZOOM_SPEED = 0.0015;
   const SUN_BASE_SCALE = 1.0;
   const SUN_CINEMATIC_SCALE = 18.0;
+  const READABLE_DISTANCES = { moon: 1.72, mars: 3.25, sun: 9.5 };
+  const REAL_DISTANCES_KM = {
+    moon: 384400,
+    sun: 149597870.7,
+    marsOrbitRadius: 1.523679 * 149597870.7
+  };
+  const REAL_RADII_KM = {
+    moon: 1737.4,
+    mars: 3389.5,
+    earth: 6371,
+    sun: 696340
+  };
+  const READABLE_RADII = {
+    moon: 0.072,
+    mars: 0.096,
+    sunCore: 0.115
+  };
   const MAPLIBRE_VERSION = '4.1.2';
   const MAPLIBRE_JS_URL = options.mapLibreJsUrl || `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
   const MAPLIBRE_CSS_URL = options.mapLibreCssUrl || `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
 
   const TARGET_CONFIGS = {
-    earth: { minRadius: MACRO_MIN_RADIUS, maxRadius: 20.0, defaultRadius: 3.1, discStart: 1.42, earthScale: 1.0 },
-    moon:  { minRadius: 0.08, maxRadius: 20.0, defaultRadius: 0.35, discStart: 0.12, earthScale: 0.25 },
-    mars:  { minRadius: 0.10, maxRadius: 24.0, defaultRadius: 0.48, discStart: 0.16, earthScale: 0.22 },
-    sun:   { minRadius: 0.15, maxRadius: 35.0, defaultRadius: 10.5, discStart: 0.3, earthScale: 0.24 }
+    earth: { minRadius: MACRO_MIN_RADIUS, maxRadius: 20.0, defaultRadius: 3.1, discStart: 1.42 },
+    moon:  { minRadius: 0.08, maxRadius: 20.0, defaultRadius: 0.35, discStart: 0.12 },
+    mars:  { minRadius: 0.10, maxRadius: 24.0, defaultRadius: 0.48, discStart: 0.16 },
+    sun:   { minRadius: 0.15, maxRadius: 35.0, defaultRadius: 10.5, discStart: 0.3 }
   };
 
   const orbit = { radius: TARGET_CONFIGS.earth.defaultRadius, theta: 0, phi: 0.22 };
@@ -76,6 +93,8 @@
   let sunFocusBlend = 0.0;
   let mobilePinching = false;
   let mobileLastPinchDistance = 0;
+  const spaceScaleMode = 'log';
+  const spaceSizeMode = 'log';
 
   function emit(name, detail = {}) {
     const handlers = eventHandlers.get(name);
@@ -96,6 +115,55 @@
   function smoothstep01(v) {
     const x = clamp01(v);
     return x * x * (3 - 2 * x);
+  }
+
+  function logSceneDistance(km) {
+    const minLog = Math.log10(REAL_DISTANCES_KM.moon);
+    const maxLog = Math.log10(REAL_DISTANCES_KM.sun);
+    const p = clamp01((Math.log10(Math.max(km, 1)) - minLog) / (maxLog - minLog));
+    return 1.45 + p * 8.15;
+  }
+
+  function logSceneRadius(km) {
+    const minLog = Math.log10(REAL_RADII_KM.moon);
+    const maxLog = Math.log10(REAL_RADII_KM.sun);
+    const p = clamp01((Math.log10(Math.max(km, 1)) - minLog) / (maxLog - minLog));
+    return 0.07 + p * 0.30;
+  }
+
+  function currentMoonDistance() {
+    return logSceneDistance(REAL_DISTANCES_KM.moon);
+  }
+
+  function currentMarsDistanceKm() {
+    const now = new Date();
+    const d = (now.getTime() - Date.UTC(2000, 0, 1, 12, 0, 0)) / 86400000;
+    const marsLongitude = normalizeDeg(355.433 + 0.52402075 * d);
+    const earthLongitude = normalizeDeg(100.464 + 0.98564736 * d);
+    const relativeLongitude = degToRad(normalizeDeg(marsLongitude - earthLongitude));
+    const earthKm = REAL_DISTANCES_KM.sun;
+    const marsKm = REAL_DISTANCES_KM.marsOrbitRadius;
+    return Math.sqrt(earthKm * earthKm + marsKm * marsKm - 2 * earthKm * marsKm * Math.cos(relativeLongitude));
+  }
+
+  function currentMarsDistance() {
+    return logSceneDistance(currentMarsDistanceKm());
+  }
+
+  function currentSunDistance() {
+    return logSceneDistance(REAL_DISTANCES_KM.sun);
+  }
+
+  function currentMoonSizeScale() {
+    return logSceneRadius(REAL_RADII_KM.moon) / READABLE_RADII.moon;
+  }
+
+  function currentMarsSizeScale() {
+    return logSceneRadius(REAL_RADII_KM.mars) / READABLE_RADII.mars;
+  }
+
+  function currentSunSizeScale() {
+    return logSceneRadius(REAL_RADII_KM.sun) / READABLE_RADII.sunCore;
   }
 
   function updateCamera() {
@@ -328,7 +396,6 @@
 
   const moonOrbitGroup = new THREE.Group();
   scene.add(moonOrbitGroup);
-  const moonDistance = 1.72;
   const moon = new THREE.Mesh(
     new THREE.SphereGeometry(0.072, 48, 48),
     new THREE.MeshPhongMaterial({ map: loader.load(ASSETS.moon), shininess: 2 })
@@ -337,7 +404,6 @@
 
   const marsOrbitGroup = new THREE.Group();
   scene.add(marsOrbitGroup);
-  const marsDistance = 3.25;
   const mars = new THREE.Mesh(
     new THREE.SphereGeometry(0.096, 64, 64),
     new THREE.MeshPhongMaterial({
@@ -358,7 +424,7 @@
     return ((deg % 360) + 360) % 360;
   }
 
-  function getApproxMoonScenePosition(distance = moonDistance) {
+  function getApproxMoonScenePosition(distance = currentMoonDistance()) {
     const now = new Date();
     const d = (now.getTime() - Date.UTC(2000, 0, 1, 12, 0, 0)) / 86400000;
     const sunMeanAnomaly = normalizeDeg(357.529 + 0.98560028 * d);
@@ -381,7 +447,7 @@
     return inPlane.multiplyScalar(Math.cos(latRad)).add(orbitUp.clone().multiplyScalar(Math.sin(latRad))).normalize().multiplyScalar(distance);
   }
 
-  function getApproxMarsScenePosition(distance = marsDistance) {
+  function getApproxMarsScenePosition(distance = currentMarsDistance()) {
     const now = new Date();
     const d = (now.getTime() - Date.UTC(2000, 0, 1, 12, 0, 0)) / 86400000;
     const marsLongitude = normalizeDeg(355.433 + 0.52402075 * d);
@@ -400,6 +466,15 @@
   function orientMoonTowardEarth() {
     moon.lookAt(0, 0, 0);
     moon.rotateY(Math.PI);
+  }
+
+  function updateCelestialPositions() {
+    sunGroup.position.copy(sun.position.clone().normalize().multiplyScalar(currentSunDistance()));
+    moon.position.copy(getApproxMoonScenePosition(currentMoonDistance()));
+    moon.scale.setScalar(currentMoonSizeScale());
+    orientMoonTowardEarth();
+    mars.position.copy(getApproxMarsScenePosition(currentMarsDistance()));
+    mars.scale.setScalar(currentMarsSizeScale());
   }
 
   const earthGroup = new THREE.Group();
@@ -592,7 +667,7 @@
     flight.endRadius = TARGET_CONFIGS[targetName].defaultRadius;
     flight.startCenter.copy(dynamicCenter);
     flight.endCenterName = targetName;
-    flight.startEarthScale = earthGroup.scale.x;
+    flight.startEarthScale = 1.0;
     flight.startSunFocus = sunFocusBlend;
     flight.endSunFocus = targetName === 'sun' ? 1.0 : 0.0;
     flight.startTheta = orbit.theta;
@@ -782,7 +857,6 @@
     const cameraCurve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.35);
     const startTime = performance.now();
     const startCenter = dynamicCenter.clone();
-    const startScale = earthGroup.scale.x;
     const startSunFocus = sunFocusBlend;
     currentTargetName = 'earth';
     currentConfig = TARGET_CONFIGS.earth;
@@ -792,7 +866,7 @@
       const raw = Math.min(1, (performance.now() - startTime) / duration);
       const p = raw < 0.5 ? 4 * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 3) / 2;
       dynamicCenter.lerpVectors(startCenter, new THREE.Vector3(0, 0, 0), p);
-      earthGroup.scale.setScalar(startScale + (1 - startScale) * p);
+      earthGroup.scale.setScalar(1);
       sunFocusBlend = startSunFocus + (0 - startSunFocus) * p;
       const cameraPos = cameraCurve.getPoint(p);
       const relativeCamera = cameraPos.clone().sub(dynamicCenter);
@@ -912,6 +986,19 @@
     return {
       mode: isMicroView ? 'map' : 'globe',
       target: currentTargetName,
+      spaceScaleMode,
+      spaceSizeMode,
+      spaceDistances: {
+        moon: currentMoonDistance(),
+        mars: currentMarsDistance(),
+        sun: currentSunDistance(),
+        marsKm: currentMarsDistanceKm()
+      },
+      spaceSizes: {
+        moonScale: currentMoonSizeScale(),
+        marsScale: currentMarsSizeScale(),
+        sunScale: currentSunSizeScale()
+      },
       orbit: { ...orbit },
       center: dynamicCenter.clone(),
       cameraPosition: camera.position.clone()
@@ -1033,10 +1120,40 @@
   const dropdownItems = document.querySelectorAll('.dropdown-item');
   const bodyIcons = { earth: '🌍', moon: '<span class="gray-moon">🌕</span>', mars: '<span class="mars-disc" aria-hidden="true"></span>', sun: '☀️' };
   const bodyNames = { earth: 'Earth', moon: 'Moon', mars: 'Mars', sun: 'Sun' };
+  let scaleInfoPanel = null;
 
   function syncTargetDropdownActive(targetName) {
-    targetBtn.innerHTML = `${bodyIcons[targetName]} ${bodyNames[targetName]} ▾`;
+    targetBtn.innerHTML = `<span class="target-label" style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap;"><span class="target-icon" style="display:inline-flex;align-items:center;justify-content:center;width:18px;">${bodyIcons[targetName]}</span><span>${bodyNames[targetName]}</span></span><span aria-hidden="true" style="margin-left:8px;">▾</span>`;
     dropdownItems.forEach(item => item.classList.toggle('active', item.dataset.target === targetName));
+  }
+
+  function createScaleInfoPill() {
+    if (options.showSpaceScaleToggle === false) return;
+    const container = document.getElementById('ui-container');
+    if (!container || document.getElementById('space-scale-info-btn')) return;
+    const button = document.createElement('button');
+    button.id = 'space-scale-info-btn';
+    button.type = 'button';
+    button.textContent = 'Scale info';
+    button.style.cssText = 'margin-top:10px;border:1px solid rgba(255,255,255,.13);border-radius:999px;padding:8px 12px;color:#dceaff;background:rgba(8,12,24,.62);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 12px 34px rgba(0,0,0,.30);font:800 10px/1 Inter,system-ui,sans-serif;cursor:pointer;';
+
+    scaleInfoPanel = document.createElement('div');
+    scaleInfoPanel.id = 'space-scale-info-panel';
+    scaleInfoPanel.style.cssText = 'display:none;position:absolute;left:0;bottom:calc(100% + 10px);width:260px;padding:12px 13px;border:1px solid rgba(255,255,255,.14);border-radius:14px;background:rgba(8,12,24,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 18px 48px rgba(0,0,0,.45);color:#dceaff;font:11px/1.45 Inter,system-ui,sans-serif;';
+    scaleInfoPanel.innerHTML = `
+      <div style="color:#ffffff;font-weight:850;font-size:12px;margin-bottom:6px;">Log scale view</div>
+      <div style="color:#bcd0f5;margin-bottom:8px;">Distances and sizes use real Moon, Mars, Earth, and Sun measurements, then compress them with a logarithmic scale so the whole local space system stays visible.</div>
+      <div style="margin-bottom:6px;"><span style="color:#f4d06f;font-weight:850;">Distances:</span> Moon is the near anchor, Sun is the far anchor, and Mars moves between them from its current approximate distance.</div>
+      <div><span style="color:#f4d06f;font-weight:850;">Sizes:</span> Moon, Mars, and Sun are sized from their real radii, then fit into a readable log range. Earth remains the visual home reference.</div>`;
+
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      const visible = scaleInfoPanel.style.display === 'block';
+      scaleInfoPanel.style.display = visible ? 'none' : 'block';
+    });
+    scaleInfoPanel.addEventListener('click', event => event.stopPropagation());
+    container.appendChild(button);
+    container.appendChild(scaleInfoPanel);
   }
 
   targetBtn.addEventListener('click', e => {
@@ -1044,7 +1161,10 @@
     dropdownMenu.classList.toggle('show');
   });
 
-  window.addEventListener('click', () => dropdownMenu.classList.remove('show'));
+  window.addEventListener('click', () => {
+    dropdownMenu.classList.remove('show');
+    if (scaleInfoPanel) scaleInfoPanel.style.display = 'none';
+  });
   dropdownItems.forEach(item => {
     item.addEventListener('click', e => {
       const target = e.target.closest('.dropdown-item').dataset.target;
@@ -1054,12 +1174,15 @@
 
   createStars();
   createMilkyWay();
+  createScaleInfoPill();
+  updateCelestialPositions();
   updateEarthSpin();
   updateCamera();
 
   function animate() {
     requestAnimationFrame(animate);
     updateEarthSpin();
+    updateCelestialPositions();
 
     if (flight.active) {
       const p = Math.min((performance.now() - flight.startTime) / flight.duration, 1);
@@ -1067,7 +1190,7 @@
       const sunRevealP = flight.endCenterName === 'sun' ? smoothstep01((p - 0.28) / 0.72) : routeP;
       const endPos = getTargetPosition(flight.endCenterName);
       dynamicCenter.lerpVectors(flight.startCenter, endPos, routeP);
-      earthGroup.scale.setScalar(flight.startEarthScale + (TARGET_CONFIGS[flight.endCenterName].earthScale - flight.startEarthScale) * routeP);
+      earthGroup.scale.setScalar(1);
       sunFocusBlend = flight.startSunFocus + (flight.endSunFocus - flight.startSunFocus) * sunRevealP;
 
       if (flight.cameraCurve) {
@@ -1085,7 +1208,7 @@
       }
     } else {
       dynamicCenter.copy(getTargetPosition(currentTargetName));
-      earthGroup.scale.setScalar(TARGET_CONFIGS[currentTargetName].earthScale);
+      earthGroup.scale.setScalar(1);
       sunFocusBlend = currentTargetName === 'sun' ? 1.0 : 0.0;
     }
 
@@ -1099,17 +1222,11 @@
     const easedSunFocus = smoothstep01(sunFocusBlend);
     setSunTextureMode(easedSunFocus > 0.28);
     sunGlow.scale.set(1.28 * sunPulse, 1.28 * sunPulse, 1);
-    const desiredSunScale = SUN_BASE_SCALE + (SUN_CINEMATIC_SCALE - SUN_BASE_SCALE) * easedSunFocus;
+    const desiredSunScale = (SUN_BASE_SCALE + (SUN_CINEMATIC_SCALE - SUN_BASE_SCALE) * easedSunFocus) * currentSunSizeScale();
     sunScaleTarget.set(desiredSunScale, desiredSunScale, desiredSunScale);
     sunGroup.scale.lerp(sunScaleTarget, flight.active ? 0.18 : 0.08);
     raysGroup.visible = easedSunFocus < 0.35;
     raysGroup.rotation.z += 0.0008;
-
-    moon.position.copy(getApproxMoonScenePosition(moonDistance));
-    moon.scale.setScalar(1);
-    orientMoonTowardEarth();
-
-    mars.position.copy(getApproxMarsScenePosition(marsDistance));
 
     emit('beforeRender', { time: performance.now(), delta: 0 });
 

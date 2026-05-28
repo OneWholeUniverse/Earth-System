@@ -176,6 +176,32 @@ test('boots and exposes the public EarthSystem contract', async ({ page }) => {
   assert.match(contract.buttonText, /Earth/);
 });
 
+test('scale info pill explains the fixed log distance and size view', async ({ page }) => {
+  const before = await page.evaluate(() => ({
+    buttonText: document.querySelector('#space-scale-info-btn')?.innerText || '',
+    panelDisplay: getComputedStyle(document.querySelector('#space-scale-info-panel')).display,
+    state: window.EarthSystem.getState()
+  }));
+  assert.equal(before.buttonText, 'Scale info');
+  assert.equal(before.panelDisplay, 'none');
+  assert.equal(before.state.spaceScaleMode, 'log');
+  assert.equal(before.state.spaceSizeMode, 'log');
+  assert.ok(before.state.spaceDistances.sun > before.state.spaceDistances.moon);
+  assert.ok(before.state.spaceSizes.sunScale > before.state.spaceSizes.moonScale);
+
+  await page.click('#space-scale-info-btn');
+  const after = await page.evaluate(() => {
+    return {
+      text: document.querySelector('#space-scale-info-panel')?.innerText || '',
+      panelDisplay: getComputedStyle(document.querySelector('#space-scale-info-panel')).display
+    };
+  });
+  assert.equal(after.panelDisplay, 'block');
+  assert.match(after.text, /Distances:/);
+  assert.match(after.text, /Sizes:/);
+  assert.match(after.text, /logarithmic scale/);
+});
+
 test('renders the 3D scene', async ({ page }) => {
   await page.waitForTimeout(500);
   const renderState = await page.evaluate(() => {
@@ -550,8 +576,8 @@ test('flyToTarget settles on Earth, Moon, Mars, and Sun with finite camera state
     assert.equal(state.target, target);
     assert.ok(state.radius > 0);
     assert.equal(state.cameraFinite, true);
+    assert.ok(Math.abs(state.earthScale - 1) < 0.05, `${target} target should keep Earth physically stable`);
     if (target === 'sun') assert.ok(state.sunScale > 8, 'Sun target should use cinematic sun scale');
-    if (target === 'earth') assert.ok(Math.abs(state.earthScale - 1) < 0.05, 'Earth target should restore Earth scale');
   }
 });
 
