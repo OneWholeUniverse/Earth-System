@@ -26,6 +26,15 @@
   let healthMode = false;
   let healthOnlyPositive = false;
   let healthOnlyNegative = false;
+  let crewRollPanelOpen  = false;
+  let manifestQuestion = 0; // 0 = Pirate/Paragon, 1 = Satisfied/Yes/No
+
+  const MANIFEST_VOCAB = [
+    { positive: 'Paragon', negative: 'Pirate' },
+    { positive: 'Yes',     negative: 'No'     }
+  ];
+
+  function manifestVocab() { return MANIFEST_VOCAB[manifestQuestion] || MANIFEST_VOCAB[0]; }
   let healthClusterMode = false;
   let heightMinPercent = 0;
   let heightMaxPercent = 100;
@@ -249,10 +258,20 @@
     els.healthBtn.textContent = healthMode ? 'Hide Manifest' : 'Show Manifest';
     els.energyBtn.style.display = healthMode ? 'none' : 'block';
     els.healthBtn.style.display = energyMode ? 'none' : 'block';
+    const manifestHud = document.getElementById('manifest-hud');
+    if (manifestHud) manifestHud.classList.toggle('visible', healthMode);
+    // Sync Manifest Filters button active state with panel visibility
+    const mfBtn = document.getElementById('manifestFiltersBtn');
+    if (mfBtn) mfBtn.classList.toggle('active', els.inspectPanel.classList.contains('visible'));
     els.healthPositiveBtn.classList.toggle('active', healthOnlyPositive);
     els.healthNegativeBtn.classList.toggle('active', healthOnlyNegative);
     els.healthClusterBtn.classList.toggle('active', healthClusterMode);
     els.healthClusterBtn.textContent = 'Cluster Cities';
+    const vocab = manifestVocab();
+    els.healthPositiveBtn.textContent = `Show Only ${vocab.positive}`;
+    els.healthNegativeBtn.textContent = `Show Only ${vocab.negative}`;
+    const qPanel = document.getElementById('manifestQuestionPanel');
+    if (qPanel) qPanel.classList.toggle('visible', healthMode);
     if (healthLayer && typeof healthLayer.applyVisualState === 'function') healthLayer.applyVisualState();
     els.heightRangeReadout.textContent = `Showing ${heightMinPercent}th - ${heightMaxPercent}th percentile column height`;
     els.heightRangeCount.textContent = displayedHealthCities.length
@@ -748,8 +767,9 @@
     const redMaterial = makeColumnMaterial();
     const selectedRing = new THREE.Mesh(
       new THREE.TorusGeometry(0.035, 0.0022, 8, 48),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false, depthTest: false })
     );
+    selectedRing.renderOrder = 999;
     selectedRing.visible = false;
     const tmpMatrix = new THREE.Matrix4();
     const tmpQuat = new THREE.Quaternion();
@@ -790,16 +810,18 @@
         if (activeColumn) matchedSelection = true;
         writeColor(greenColorAttribute.array, i, greenDisabled ? disabledColor : greenColor);
         writeColor(redColorAttribute.array, i, redDisabled ? disabledColor : redColor);
-        greenAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0 : greenDisabled ? 0 : 0.92;
-        redAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0 : redDisabled ? 0.3 : 0.88;
+        const forceRed = manifestQuestion === 0;
+        greenAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0.13 : greenDisabled ? 0.25 : forceRed ? 0 : 0.92;
+        redAlphaAttribute.array[i]   = hasSelection && !activeColumn ? 0.13 : redDisabled   ? 0    : 0.88;
       }
       if (hasSelection && !matchedSelection) {
         selectedHealthMeta = null;
         for (let i = 0; i < count; i++) {
           writeColor(greenColorAttribute.array, i, greenDisabled ? disabledColor : greenColor);
           writeColor(redColorAttribute.array, i, redDisabled ? disabledColor : redColor);
-          greenAlphaAttribute.array[i] = greenDisabled ? 0 : 0.92;
-          redAlphaAttribute.array[i] = redDisabled ? 0.3 : 0.88;
+          const forceRed2 = manifestQuestion === 0;
+          greenAlphaAttribute.array[i] = greenDisabled ? 0.25 : forceRed2 ? 0 : 0.92;
+          redAlphaAttribute.array[i]   = redDisabled   ? 0    : 0.88;
         }
       }
       greenColorAttribute.needsUpdate = true;
@@ -820,8 +842,14 @@
         updateMapHealthSource();
         return;
       }
-      const greenGeometry = baseGeometry.clone();
+      const greenGeometry = new THREE.CylinderGeometry(1, 1, 1, 18, 1, false);
       const redGeometry = baseGeometry.clone();
+      if (redGeometry.groups && redGeometry.groups.length > 2) {
+        const sliceEnd = redGeometry.groups[2].start;
+        const newArray = redGeometry.index.array.slice(0, sliceEnd);
+        redGeometry.setIndex(new THREE.BufferAttribute(newArray, 1));
+        redGeometry.groups = redGeometry.groups.slice(0, 2);
+      }
       greenColorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length * 3), 3);
       redColorAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length * 3), 3);
       greenAlphaAttribute = new THREE.InstancedBufferAttribute(new Float32Array(displayedHealthCities.length), 1);
@@ -832,6 +860,8 @@
       redGeometry.setAttribute('instanceColumnAlpha', redAlphaAttribute);
       greenInstances = new THREE.InstancedMesh(greenGeometry, greenMaterial, displayedHealthCities.length);
       redInstances = new THREE.InstancedMesh(redGeometry, redMaterial, displayedHealthCities.length);
+      greenInstances.renderOrder = 10;
+      redInstances.renderOrder = 11;
       greenInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       redInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       greenInstances.userData.metas = [];
@@ -859,17 +889,18 @@
 
         tmpQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
 
-        const redCenter = pos.clone().add(normal.clone().multiplyScalar(redHeight * 0.5));
+        const greenCenter = pos.clone().add(normal.clone().multiplyScalar(greenHeight * 0.5));
+        tmpScale.set(radius, greenHeight, radius);
+        tmpMatrix.compose(greenCenter, tmpQuat, tmpScale);
+        greenInstances.setMatrixAt(index, tmpMatrix);
+        greenInstances.userData.metas[index] = meta;
+
+        const redCenter = pos.clone().add(normal.clone().multiplyScalar(greenHeight + redHeight * 0.5));
         tmpScale.set(radius, redHeight, radius);
         tmpMatrix.compose(redCenter, tmpQuat, tmpScale);
         redInstances.setMatrixAt(index, tmpMatrix);
         redInstances.userData.metas[index] = meta;
 
-        const greenCenter = pos.clone().add(normal.clone().multiplyScalar(redHeight + greenHeight * 0.5));
-        tmpScale.set(radius, greenHeight, radius);
-        tmpMatrix.compose(greenCenter, tmpQuat, tmpScale);
-        greenInstances.setMatrixAt(index, tmpMatrix);
-        greenInstances.userData.metas[index] = meta;
       });
       greenInstances.instanceMatrix.needsUpdate = true;
       redInstances.instanceMatrix.needsUpdate = true;
@@ -1213,9 +1244,11 @@
     selectedHealthMeta = meta;
     set2DSelectedHealthDisk(meta);
     if (healthLayer && typeof healthLayer.applyVisualState === 'function') healthLayer.applyVisualState();
-    const green = meta.greenShare || healthShare(meta.lat, meta.lng);
-    const red = meta.redShare || 1 - green;
-    const city = labelForCity(meta);
+    const green = manifestQuestion === 0 ? 0 : (meta.greenShare || healthShare(meta.lat, meta.lng));
+    const red = 1 - green;
+    const city = meta.isCluster
+      ? `${meta.city || meta.cityAscii || meta.placeLabel || 'City'} Region`
+      : labelForCity(meta);
     const greenPct = Math.round(green * 100);
     const redPct = Math.max(0, 100 - greenPct);
     els.tooltip.innerHTML = `
@@ -1240,7 +1273,7 @@
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
           <span style="font-size:11px;color:#9fb3d9;">Sentiment</span>
-          <span style="font-size:10px;color:#d9e5ff;">Positive / Negative</span>
+          <span style="font-size:10px;color:#d9e5ff;">${escapeHTML(manifestVocab().positive)} / ${escapeHTML(manifestVocab().negative)}</span>
         </div>
 
         <div style="height:11px;width:100%;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.055);border-radius:999px;overflow:hidden;box-shadow:inset 0 0 12px rgba(0,0,0,.22);">
@@ -1249,8 +1282,8 @@
         </div>
 
         <div style="display:flex;justify-content:space-between;font-size:10px;">
-          <span style="color:#86efac;">Positive ${greenPct}%</span>
-          <span style="color:#fca5a5;">Negative ${redPct}%</span>
+          <span style="color:#86efac;">${escapeHTML(manifestVocab().positive)} ${greenPct}%</span>
+          <span style="color:#fca5a5;">${escapeHTML(manifestVocab().negative)} ${redPct}%</span>
         </div>
       </div>`;
     els.tooltip.style.display = 'block';
@@ -1440,6 +1473,8 @@
           visible: !!(energyLayer.threeObject && energyLayer.threeObject.visible)
         };
       }) : [],
+      manifestQuestion,
+      crewRollPanelOpen,
       displayedSample: displayedHealthCities.slice(0, 50).map(d => ({
         id: d.id,
         city: labelForCity(d),
@@ -1491,18 +1526,57 @@
       }
       updateButtons();
     });
+    // Manifest HUD buttons
+    const manifestFiltersBtn = document.getElementById('manifestFiltersBtn');
+    const manifestCrewBtn    = document.getElementById('manifestCrewBtn');
+    if (manifestFiltersBtn) {
+      manifestFiltersBtn.addEventListener('click', () => {
+        if (els.inspectPanel.classList.contains('visible')) {
+          closePanel();
+        } else {
+          restorePanel();
+        }
+        manifestFiltersBtn.classList.toggle('active', els.inspectPanel.classList.contains('visible'));
+      });
+    }
+    if (manifestCrewBtn) {
+      manifestCrewBtn.addEventListener('click', () => {
+        crewRollPanelOpen ? closeCrewRoll() : openCrewRoll();
+        manifestCrewBtn.classList.toggle('active', crewRollPanelOpen);
+      });
+    }
+
     els.healthBtn.addEventListener('click', () => {
       healthMode = !healthMode;
       if (healthMode) {
+        manifestQuestion = 0;
+        const mqItems2 = document.querySelectorAll('.mq-item');
+        mqItems2.forEach(i => i.classList.toggle('active', i.dataset.q === '0'));
+        const mqLabel2 = document.getElementById('manifestQuestionLabel');
+        if (mqLabel2) mqLabel2.textContent = 'Are you a Pirate, or are you a Paragon?';
+        // Reset legend to Q0 vocabulary
+        const lp = document.getElementById('mqLegendPositive');
+        const ln = document.getElementById('mqLegendNegative');
+        if (lp) lp.textContent = MANIFEST_VOCAB[0].positive;
+        if (ln) ln.textContent = MANIFEST_VOCAB[0].negative;
         energyMode = false;
         resetEnergyElevation();
         selectedEnergySystem = null;
         clearHealthSelection();
         showPanel('health');
         if (els.openFiltersBtn) els.openFiltersBtn.classList.remove('visible');
+        // Auto-open Cast & Crew list when Manifest opens
+        if (!crewRollPanelOpen) {
+          setTimeout(() => {
+            openCrewRoll();
+            if (manifestCrewBtn) manifestCrewBtn.classList.add('active');
+          }, 120);
+        }
       } else {
         els.tooltip.style.display = 'none';
         closePanel();
+        closeCrewRoll();
+        if (manifestCrewBtn) manifestCrewBtn.classList.remove('active');
       }
       updateButtons();
     });
@@ -1521,6 +1595,36 @@
     });
     els.healthPositiveBtn.addEventListener('click', () => { healthOnlyPositive = !healthOnlyPositive; if (healthOnlyPositive) healthOnlyNegative = false; updateButtons(); });
     els.healthNegativeBtn.addEventListener('click', () => { healthOnlyNegative = !healthOnlyNegative; if (healthOnlyNegative) healthOnlyPositive = false; updateButtons(); });
+
+    // Manifest question dropdown
+    const mqBtn = document.getElementById('manifestQuestionBtn');
+    const mqDropdown = document.getElementById('manifestQuestionDropdown');
+    const mqLabel = document.getElementById('manifestQuestionLabel');
+    const mqItems = document.querySelectorAll('.mq-item');
+    if (mqBtn && mqDropdown) {
+      mqBtn.addEventListener('click', e => { e.stopPropagation(); mqDropdown.classList.toggle('show'); });
+      const updateLegend = () => {
+        const v = manifestVocab();
+        const lp = document.getElementById('mqLegendPositive');
+        const ln = document.getElementById('mqLegendNegative');
+        if (lp) lp.textContent = v.positive;
+        if (ln) ln.textContent = v.negative;
+      };
+      mqItems.forEach(item => {
+        item.addEventListener('click', e => {
+          e.stopPropagation();
+          manifestQuestion = Number(item.dataset.q);
+          mqItems.forEach(i => i.classList.toggle('active', i === item));
+          if (mqLabel) mqLabel.textContent = item.childNodes[0].textContent.trim();
+          mqDropdown.classList.remove('show');
+          updateLegend();
+          updateButtons();
+          // Refresh open info card if visible
+          if (selectedHealthMeta) selectHealthMeta(selectedHealthMeta);
+        });
+      });
+      document.addEventListener('click', () => mqDropdown.classList.remove('show'));
+    }
     els.healthClusterBtn.addEventListener('click', () => { healthClusterMode = !healthClusterMode; refreshHealth(); });
     function handleHeightRangeInput() {
       let min = Math.max(0, Math.min(100, Number(els.heightRangeMin.value)));
@@ -1544,6 +1648,472 @@
       if (event.target === els.flyInput || event.target === els.flyClearBtn || els.flySuggestions.contains(event.target)) return;
       els.flySuggestions.style.display = 'none';
     });
+    // ── Cast & Crew ───────────────────────────────────────────────
+    // ── Paragon registry ─────────────────────────────────────────
+    // Tara — the rising crew
+    const TARA_PARAGONS = [
+      { name:'Ananya',    city:'Milan',      lat:45.46, lng:9.19,    level:'Training',   system:'Design'     },
+      { name:'Mahesh',    city:'Goa',        lat:15.49, lng:73.82,   level:'Practicing', system:'Happiness'  },
+      { name:'Pushpak',   city:'Goa',        lat:15.49, lng:73.82,   level:'Practicing', system:'Energy'     },
+      { name:'Aishwarya', city:'Goa',        lat:15.49, lng:73.82,   level:'Practicing', system:'Health'     },
+      { name:'Samarjit',  city:'Chandigarh', lat:30.73, lng:76.78,   level:'Practicing', system:'Technology' },
+      { name:'Ishan',     city:'Lund',       lat:55.70, lng:13.19,   level:'Training',   system:'Home'       },
+      { name:'Ayush',     city:'Indore',     lat:22.72, lng:75.86,   level:'Practicing', system:'Technology' },
+      { name:'Akshat',    city:'Lucknow',    lat:26.85, lng:80.95,   level:'Practicing', system:'Technology' },
+      { name:'Tharani',   city:'Goa',        lat:15.49, lng:73.82,   level:'Practicing', system:'Technology' },
+      { name:'Shashank',  city:'Chennai',    lat:13.08, lng:80.27,   level:'Proficient', system:'Games'      },
+    ];
+    // Nebula — the established crew
+    const NEBULA_PARAGONS = [
+      { name:'Priya',     city:'Charlotte',  lat:35.23, lng:-80.84,  level:'Expert',     system:'Technology' },
+      { name:'Sonia',     city:'Victoria',   lat:48.43, lng:-123.37, level:'Expert',     system:'Health'     },
+      { name:'Vinay',     city:'Pune',       lat:18.52, lng:73.86,   level:'Sensei',     system:'Home'       },
+      { name:'Aditi',     city:'Pune',       lat:18.52, lng:73.86,   level:'Expert',     system:'Home'       },
+      { name:'Meris',     city:'Bozeman',    lat:45.68, lng:-111.04, level:'Expert',     system:'Health'     },
+      { name:'Ahmed',     city:'Goa',        lat:15.49, lng:73.82,   level:'Proficient', system:'Food'       },
+    ];
+    // Combined for any code that still references PARAGONS
+    const PARAGONS = [...TARA_PARAGONS, ...NEBULA_PARAGONS];
+
+    // System → color tokens
+    const SYSTEM_STYLE = {
+      Design:     { bg:'rgba(167,139,250,.14)', bd:'rgba(167,139,250,.38)', tx:'#c4b5fd' },
+      Water:      { bg:'rgba(56,189,248,.13)',  bd:'rgba(56,189,248,.38)',  tx:'#7dd3fc' },
+      Animal:     { bg:'rgba(134,239,172,.12)', bd:'rgba(134,239,172,.35)', tx:'#86efac' },
+      Home:       { bg:'rgba(251,191,36,.11)',  bd:'rgba(251,191,36,.34)',  tx:'#fbbf24' },
+      Happiness:  { bg:'rgba(253,224,71,.11)',  bd:'rgba(253,224,71,.32)',  tx:'#fde047' },
+      Guard:      { bg:'rgba(148,163,184,.12)', bd:'rgba(148,163,184,.32)', tx:'#94a3b8' },
+      Health:     { bg:'rgba(251,113,133,.13)', bd:'rgba(251,113,133,.34)', tx:'#fb7185' },
+      Technology: { bg:'rgba(103,232,249,.11)', bd:'rgba(103,232,249,.32)', tx:'#67e8f9' },
+      Food:       { bg:'rgba(251,146,60,.12)',  bd:'rgba(251,146,60,.34)',  tx:'#fb923c' },
+      Energy:     { bg:'rgba(252,211,77,.11)',  bd:'rgba(252,211,77,.32)',  tx:'#fcd34d' },
+      Games:      { bg:'rgba(168,85,247,.12)',  bd:'rgba(168,85,247,.34)',  tx:'#d8b4fe' },
+    };
+
+    // Proficiency ladder
+    const LEVEL_CONFIG = {
+      Training:   { dots:1, cls:'lv-training'   },
+      Practicing: { dots:2, cls:'lv-practicing'  },
+      Proficient: { dots:3, cls:'lv-proficient'  },
+      Expert:     { dots:4, cls:'lv-expert'      },
+      Sensei:     { dots:5, cls:'lv-sensei'      },
+    };
+
+    const LAUREL_L = `<svg class="sensei-curve" width="7" height="16" viewBox="0 0 7 16" fill="none"><path d="M6 1 C2 4, 2 12, 6 15" stroke="#fbbf24" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+    const LAUREL_R = `<svg class="sensei-curve" width="7" height="16" viewBox="0 0 7 16" fill="none"><path d="M1 1 C5 4, 5 12, 1 15" stroke="#fbbf24" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+
+    function proficiencyHTML(level) {
+      const ORB = '<span class="gold-orb"></span>';
+      let visual;
+      if (level === 'Training') {
+        visual = '<div class="prof-bar"></div>';
+      } else {
+        const counts = { Practicing:1, Proficient:2, Expert:3, Sensei:4 };
+        const n = counts[level] || 1;
+        const orbs = Array(n).fill(ORB).join('');
+        visual = level === 'Sensei'
+          ? `<div class="sensei-wrap">${LAUREL_L}<div style="display:flex;gap:4px">${orbs}</div>${LAUREL_R}</div>`
+          : `<div style="display:flex;gap:4px">${orbs}</div>`;
+      }
+      return `<div class="crew-prof-col">
+        <div class="prof-visual">${visual}</div>
+        <span class="prof-gold-label">${level}</span>
+      </div>`;
+    }
+    function systemPillHTML(system) {
+      const s = SYSTEM_STYLE[system] || { bg:'rgba(99,102,241,.12)', bd:'rgba(99,102,241,.28)', tx:'#818cf8' };
+      return `<span class="crew-system" style="background:${s.bg};border:1px solid ${s.bd};color:${s.tx}">${escapeHTML(system)}</span>`;
+    }
+
+    const AVATAR_COLORS = ['#6366f1','#8b5cf6','#a855f7','#ec4899','#f43f5e','#f97316','#f59e0b','#10b981','#14b8a6','#3b82f6','#0ea5e9','#06b6d4'];
+    function crewAvatarColor(name) {
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+      return AVATAR_COLORS[h % AVATAR_COLORS.length];
+    }
+    function fmtPop(n) {
+      if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
+      return String(n);
+    }
+
+    let extraParagons = [];
+
+    // Seed Known Pirates
+    const KNOWN_PIRATES = [
+      { name:'Rav',    city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Nayan',  city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Sami',   city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Rukmin', city:'Singapore', lat:1.35,  lng:103.82 },
+      { name:'Rashm',  city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Sunee',  city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Priy',   city:'Pune',      lat:18.52, lng:73.86  },
+    ];
+    let knownPirates = [...KNOWN_PIRATES];
+
+    const PIRATE_EPITHETS = [
+      'Still counting doubloons',
+      'Keeping all options open',
+      'The horizon is calling',
+      'Plotting the next move',
+      'Maps not yet fully drawn',
+      'Currently off the grid',
+      'A mystery to all',
+      'Waiting for a sign',
+      'Neither here nor there',
+      'Uncharted waters ahead',
+      'Treasure still unclaimed',
+      'The wind changes daily',
+    ];
+    const CITY_EPITHETS = [
+      'Plays it cool',
+      'No comment',
+      'Professionally absent',
+      'Officially unaware',
+      'Strategically vague',
+      'Seen nothing, says nothing',
+      'Suspiciously quiet',
+      'Not home right now',
+      'Claims innocence',
+      'In plain sight',
+      'Busy doing nothing',
+      'Taking the fifth',
+    ];
+    const CITY_PIRATE_SYSTEMS = ['Plunder','Evasion','Treasure','Rum','Scheming','Chaos','Swagger','Looting','Trickery','Mischief','Mayhem','Pillaging'];
+    const PIRATE_STICKERS  = ['🦜','⚓','💀','🦈','🌊','🗡️','🐙','🔭','🏴','🧭','⚡','🐚'];
+    const PIRATE_SHIP_RANKS = ['Deckhand','Sailor','Navigator','Quartermaster','First Mate','Captain'];
+
+    function pirateHash(name) {
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+      return h;
+    }
+
+    function renderKnownPirates() {
+      const el = document.getElementById('knownPiratesList');
+      const countEl = document.getElementById('knownCount');
+      if (!el) return;
+      countEl.textContent = knownPirates.length;
+      el.innerHTML = knownPirates.length
+        ? knownPirates.map((m, i) => {
+            const h        = pirateHash(m.name);
+            const epithet  = PIRATE_EPITHETS    [h        % PIRATE_EPITHETS.length];
+            const sticker  = PIRATE_STICKERS    [(h >> 3) % PIRATE_STICKERS.length];
+            const system   = CITY_PIRATE_SYSTEMS[(h >> 6) % CITY_PIRATE_SYSTEMS.length];
+            const col      = crewAvatarColor(m.name);
+            const init     = m.name.charAt(0).toUpperCase();
+            const isNew    = m.isNew;
+            const cityLine = m.city && m.city !== 'Earth' ? escapeHTML(m.city) : '';
+            return `<div class="crew-row${isNew ? ' new-entry' : ''}" data-lat="${m.lat||0}" data-lng="${m.lng||0}">
+              <div class="crew-rank">${i+1}</div>
+              <div class="crew-avatar" style="background:${col};opacity:.8">${init}</div>
+              <div class="crew-info">
+                <div class="crew-name">${escapeHTML(m.name)}</div>
+                <div class="crew-location">${cityLine}</div>
+              </div>
+              <div class="pirate-sticker-col">
+                <span class="pirate-sticker">${sticker}</span>
+                <span class="pirate-epithet">${escapeHTML(epithet)}</span>
+              </div>
+              <span class="pirate-rank-badge">${escapeHTML(system)}</span>
+            </div>`;
+          }).join('')
+        : '<div class="pirate-known-empty">None have come forward yet…</div>';
+      el.querySelectorAll('.known-pirate-row').forEach((row, i) => {
+        const m = knownPirates[i];
+        if (m && m.lat) row.addEventListener('click', () => flyToDatum(m));
+      });
+    }
+
+    // Pirate infinite scroll state
+    let pirateOffset = 0;
+    const PIRATE_BATCH = 60;
+    let pirateCities = []; // filled on open from healthCities sorted by pop desc
+
+    function buildParagonRows(members, offset) {
+      return members.map((m, i) => {
+        const col  = crewAvatarColor(m.name);
+        const init = m.name.charAt(0).toUpperCase();
+        const isNew = m.isNew;
+        return `<div class="crew-row${isNew ? ' new-entry' : ''}" data-lat="${m.lat}" data-lng="${m.lng}">
+          <div class="crew-rank">${offset + i + 1}</div>
+          <div class="crew-avatar" style="background:${col}">${init}</div>
+          <div class="crew-info">
+            <div class="crew-name">${escapeHTML(m.name)}</div>
+            <div class="crew-location">${escapeHTML(m.city)}</div>
+          </div>
+          ${m.level ? proficiencyHTML(m.level) : '<div class="crew-prof-col"></div>'}
+          ${m.system ? systemPillHTML(m.system) : ''}
+          ${isNew ? '<span class="crew-new-flash">✦ NEW</span>' : ''}
+        </div>`;
+      }).join('');
+    }
+
+    function renderParagons() {
+      const taraEl   = document.getElementById('taraList');
+      const nebulaEl = document.getElementById('nebulaList');
+      const countEl  = document.getElementById('paragonCount');
+      if (!taraEl || !nebulaEl) return;
+
+      const taraAll   = TARA_PARAGONS;
+      const nebulaAll = [...NEBULA_PARAGONS, ...extraParagons];
+      const total     = taraAll.length + nebulaAll.length;
+
+      countEl.textContent = total;
+      document.getElementById('taraCount').textContent   = taraAll.length;
+      document.getElementById('nebulaCount').textContent = nebulaAll.length;
+
+      if (pirateCities.length) {
+        const totalPop = pirateCities.reduce((s, c) => s + (c.pop || 0), 0);
+        document.getElementById('crewRollCount').textContent = (totalPop / 1e9).toFixed(1) + 'B';
+      }
+
+      taraEl.innerHTML   = buildParagonRows(taraAll,   0);
+      nebulaEl.innerHTML = buildParagonRows(nebulaAll, taraAll.length);
+
+      taraEl.querySelectorAll('.crew-row').forEach((row, i) => {
+        row.addEventListener('click', () => flyToDatum(taraAll[i]));
+      });
+      nebulaEl.querySelectorAll('.crew-row').forEach((row, i) => {
+        row.addEventListener('click', () => flyToDatum(nebulaAll[i]));
+      });
+    }
+
+    function appendPirateBatch() {
+      const el = document.getElementById('pirateList');
+      const loader = document.getElementById('pirateLoadMore');
+      if (!el) return;
+      const batch = pirateCities.slice(pirateOffset, pirateOffset + PIRATE_BATCH);
+      if (!batch.length) { if (loader) loader.style.display = 'none'; return; }
+      pirateOffset += batch.length;
+      const unknownCountEl = document.getElementById('unknownCount');
+      if (unknownCountEl && pirateOffset <= PIRATE_BATCH) unknownCountEl.textContent = pirateCities.length.toLocaleString();
+      const frag = document.createDocumentFragment();
+      batch.forEach((c, bi) => {
+        const rank     = pirateOffset - batch.length + bi + 1;
+        const cityName = c.city || c.cityAscii || c.placeLabel || '—';
+        const h        = pirateHash(cityName);
+        const sticker  = PIRATE_STICKERS    [h          % PIRATE_STICKERS.length];
+        const epithet  = CITY_EPITHETS      [(h >> 3)   % CITY_EPITHETS.length];
+        const system   = CITY_PIRATE_SYSTEMS[(h >> 6)   % CITY_PIRATE_SYSTEMS.length];
+        const col      = crewAvatarColor(cityName);
+        const init     = cityName.charAt(0).toUpperCase();
+        const div = document.createElement('div');
+        div.className = 'crew-row';
+        div.style.cursor = 'pointer';
+        div.innerHTML = `
+          <div class="crew-rank">${rank}</div>
+          <div class="crew-avatar" style="background:${col};opacity:.65">${escapeHTML(init)}</div>
+          <div class="crew-info">
+            <div class="crew-name">${escapeHTML(cityName)}</div>
+            <div class="crew-location">${fmtPop(c.pop || 0)} people</div>
+          </div>
+          <div class="pirate-sticker-col">
+            <span class="pirate-sticker">${sticker}</span>
+            <span class="pirate-epithet">${escapeHTML(epithet)}</span>
+          </div>
+          <span class="pirate-rank-badge">${escapeHTML(system)}</span>`;
+        div.addEventListener('click', () => flyToDatum(c));
+        frag.appendChild(div);
+      });
+      el.appendChild(frag);
+      if (loader) loader.textContent = pirateOffset < pirateCities.length
+        ? `${pirateCities.length - pirateOffset} more…`
+        : 'All cities listed';
+    }
+
+    function openCrewRoll() {
+      crewRollPanelOpen = true;
+      // Build pirate list once
+      if (!pirateCities.length) {
+        pirateCities = [...healthCities].sort((a, b) => (b.pop||0) - (a.pop||0));
+        document.getElementById('pirateCount').textContent = pirateCities.length.toLocaleString();
+        const totalPop = pirateCities.reduce((s, c) => s + (c.pop || 0), 0);
+        document.getElementById('crewRollCount').textContent = (totalPop / 1e9).toFixed(1) + 'B';
+      }
+      renderParagons();
+      renderKnownPirates();
+      // Open paragon body — set overflow visible so sticky sub-headers work
+      const paragonBody = document.getElementById('paragonBody');
+      if (paragonBody) {
+        paragonBody.classList.remove('collapsed');
+        paragonBody.style.maxHeight = 'none';
+        paragonBody.style.overflow  = 'visible';
+      }
+      // Open pirate body + Caught body by default, overflow:visible for sticky
+      const pirateBody2 = document.getElementById('pirateBody');
+      if (pirateBody2) {
+        pirateBody2.classList.remove('collapsed');
+        pirateBody2.style.maxHeight = 'none';
+        pirateBody2.style.overflow  = 'visible';
+        document.getElementById('pirateHeader').classList.remove('collapsed');
+      }
+      // Open Tara, Nebula, Caught bodies by default
+      ['taraBody','nebulaBody','caughtBody'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) { b.classList.remove('collapsed'); b.style.maxHeight = 'none'; }
+      });
+      pirateOffset = 0;
+      document.getElementById('pirateList').innerHTML = '';
+      appendPirateBatch();
+      document.getElementById('crewRollPanel').classList.add('open');
+    }
+    function closeCrewRoll() {
+      crewRollPanelOpen = false;
+      document.getElementById('crewRollPanel').classList.remove('open');
+      const btn = document.getElementById('manifestCrewBtn');
+      if (btn) btn.classList.remove('active');
+    }
+
+    // Collapsible section toggle
+    function toggleSection(headerId, bodyId) {
+      const hdr  = document.getElementById(headerId);
+      const body = document.getElementById(bodyId);
+      if (!hdr || !body) return;
+      const isCollapsed = body.classList.contains('collapsed');
+      if (isCollapsed) {
+        body.style.overflow = 'hidden'; // needed during animation
+        body.classList.remove('collapsed');
+        body.style.maxHeight = body.scrollHeight + 'px';
+        hdr.classList.remove('collapsed');
+        setTimeout(() => {
+          body.style.maxHeight = 'none';
+          body.style.overflow  = 'visible'; // restore so sticky children work
+        }, 360);
+      } else {
+        body.style.overflow  = 'hidden';
+        body.style.maxHeight = body.scrollHeight + 'px';
+        requestAnimationFrame(() => {
+          body.classList.add('collapsed');
+          hdr.classList.add('collapsed');
+        });
+      }
+    }
+    document.getElementById('paragonHeader').addEventListener('click', () => {
+      const wasCollapsed = document.getElementById('paragonBody').classList.contains('collapsed');
+      toggleSection('paragonHeader','paragonBody');
+      if (wasCollapsed) {
+        // Auto-open Tara when Paragon expands
+        setTimeout(() => {
+          const taraBody = document.getElementById('taraBody');
+          if (taraBody && taraBody.classList.contains('collapsed'))
+            toggleSubBody('taraBody', 'taraChevron');
+        }, 80);
+      }
+    });
+    document.getElementById('pirateHeader').addEventListener('click',  () => {
+      const wasCollapsed = document.getElementById('pirateBody').classList.contains('collapsed');
+      toggleSection('pirateHeader','pirateBody');
+      const body = document.getElementById('pirateBody');
+      if (body && !body.classList.contains('collapsed'))
+        setTimeout(() => { body.style.maxHeight = 'none'; body.style.overflow = 'visible'; }, 340);
+      if (wasCollapsed) {
+        // Auto-open Caught when Pirate expands
+        setTimeout(() => {
+          const caughtBody = document.getElementById('caughtBody');
+          if (caughtBody && caughtBody.classList.contains('collapsed'))
+            toggleSubBody('caughtBody', 'caughtChevron');
+        }, 80);
+      }
+    });
+    // Tara / Nebula / Caught toggles (reuse toggleSubBody helper)
+    function toggleSubBody(bodyId, chevronId) {
+      const body = document.getElementById(bodyId);
+      const chevron = document.getElementById(chevronId);
+      if (!body) return;
+      const isCollapsed = body.classList.contains('collapsed');
+      if (isCollapsed) {
+        body.classList.remove('collapsed');
+        body.style.maxHeight = body.scrollHeight + 'px';
+        setTimeout(() => { body.style.maxHeight = 'none'; }, 300);
+        if (chevron) chevron.style.transform = '';
+      } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        requestAnimationFrame(() => { body.classList.add('collapsed'); });
+        if (chevron) chevron.style.transform = 'rotate(-90deg)';
+      }
+    }
+    document.getElementById('taraSubHeader').addEventListener('click',   () => toggleSubBody('taraBody',   'taraChevron'));
+    document.getElementById('nebulaSubHeader').addEventListener('click', () => toggleSubBody('nebulaBody', 'nebulaChevron'));
+    document.getElementById('knownSubHeader').addEventListener('click',  () => toggleSubBody('caughtBody', 'caughtChevron'));
+
+    document.getElementById('unknownSubHeader').addEventListener('click', () => {
+      const body = document.getElementById('unknownBody');
+      const chevron = document.getElementById('unknownChevron');
+      if (!body) return;
+      const isCollapsed = body.classList.contains('collapsed');
+      if (isCollapsed) {
+        body.classList.remove('collapsed');
+        body.style.maxHeight = body.scrollHeight + 'px';
+        setTimeout(() => { body.style.maxHeight = 'none'; }, 340);
+        if (chevron) chevron.style.transform = '';
+      } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        requestAnimationFrame(() => { body.classList.add('collapsed'); });
+        if (chevron) chevron.style.transform = 'rotate(-90deg)';
+      }
+    });
+
+    // Infinite scroll
+    document.getElementById('crewRollScroll').addEventListener('scroll', function() {
+      if (this.scrollTop + this.clientHeight > this.scrollHeight - 300) appendPirateBatch();
+    });
+
+    // Claim form
+    let crewSelectedAnswer = null;
+    function openClaimForm() {
+      const vocab = manifestVocab();
+      document.getElementById('crewRadioPosLabel').textContent = vocab.positive;
+      document.getElementById('crewRadioNegLabel').textContent = vocab.negative;
+      document.getElementById('crewNameInput').value = '';
+      crewSelectedAnswer = null;
+      document.querySelectorAll('.crew-radio-card').forEach(c => c.classList.remove('selected-pos','selected-neg'));
+      document.getElementById('crewSubmitBtn').disabled = true;
+      document.getElementById('crewClaimForm').classList.add('visible');
+      document.getElementById('crewNameInput').focus();
+    }
+    function closeClaimForm() {
+      document.getElementById('crewClaimForm').classList.remove('visible');
+    }
+
+    document.getElementById('crewRollBtn').addEventListener('click', e => { e.stopPropagation(); crewRollPanelOpen ? closeCrewRoll() : openCrewRoll(); });
+    document.getElementById('crewRollClose').addEventListener('click', closeCrewRoll);
+    document.getElementById('crewClaimBtn').addEventListener('click', openClaimForm);
+    document.getElementById('crewCancelBtn').addEventListener('click', closeClaimForm);
+
+    document.querySelectorAll('.crew-radio-card').forEach(card => {
+      card.addEventListener('click', () => {
+        crewSelectedAnswer = card.dataset.val;
+        document.querySelectorAll('.crew-radio-card').forEach(c => c.classList.remove('selected-pos','selected-neg'));
+        card.classList.add(crewSelectedAnswer === 'positive' ? 'selected-pos' : 'selected-neg');
+        document.getElementById('crewSubmitBtn').disabled = !document.getElementById('crewNameInput').value.trim();
+      });
+    });
+    document.getElementById('crewNameInput').addEventListener('input', () => {
+      document.getElementById('crewSubmitBtn').disabled = !document.getElementById('crewNameInput').value.trim() || !crewSelectedAnswer;
+    });
+    document.getElementById('crewSubmitBtn').addEventListener('click', () => {
+      const name = document.getElementById('crewNameInput').value.trim();
+      if (!name || !crewSelectedAnswer) return;
+      const newMember = { name, city:'Earth', country:'', lat:0, lng:0, isNew:true };
+      if (crewSelectedAnswer === 'positive') {
+        extraParagons.unshift(newMember);
+        renderParagons();
+        setTimeout(() => { newMember.isNew = false; renderParagons(); }, 4000);
+        setTimeout(() => { document.getElementById('crewRollScroll').scrollTop = 0; }, 80);
+      } else {
+        knownPirates.unshift(newMember);
+        renderKnownPirates();
+        setTimeout(() => { newMember.isNew = false; renderKnownPirates(); }, 4000);
+      }
+      closeClaimForm();
+    });
+
+    document.querySelectorAll('.mq-item').forEach(item => {
+      item.addEventListener('click', () => { /* vocab labels update via updateLegend */ });
+    });
+    // ── End Cast & Crew ───────────────────────────────────────────
+
     updateButtons();
     console.log(`Modular Health/Energy app mounted on earth-core with ${healthCities.length.toLocaleString()} cities.`);
   }
