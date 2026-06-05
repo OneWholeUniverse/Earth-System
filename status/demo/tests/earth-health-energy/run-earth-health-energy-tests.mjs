@@ -207,9 +207,9 @@ async function initGlobalBrowser() {
 
 async function withAppPage(testBody) {
   await initGlobalBrowser();
-  
+
   await resetAppState(globalPage);
-  
+
   globalPageErrors.length = 0;
   globalFailedRequests.length = 0;
 
@@ -264,12 +264,18 @@ async function appState(page) {
   return page.evaluate(() => window.EarthHealthEnergyApp.getState());
 }
 
-async function showHealth(page) {
+async function showHealth(page, options = {}) {
+  const { openFilters = true } = options;
   if (!(await page.locator('#showHealthBtn').isVisible())) return;
   const state = await appState(page);
   if (!state.healthMode) {
     await page.click('#showHealthBtn');
     await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().healthMode);
+  }
+  if (openFilters && !(await page.locator('#inspectPanel').evaluate(el => el.classList.contains('visible')))) {
+    await closeCrewPanel(page);
+    await page.click('#manifestFiltersBtn');
+    await page.waitForFunction(() => document.getElementById('inspectPanel')?.classList.contains('visible'));
   }
 }
 
@@ -474,15 +480,15 @@ test('Energy node click selects a system and Satisfied/Not Satisfied controls up
 test('Energy Focus control changes the focused node and keeps connection arcs active', async ({ page }) => {
   await showEnergy(page);
   await page.waitForTimeout(500);
-  const clicked = await clickVisibleEnergyNode(page, 'Goa');
+  await clickEnergyNode(page, 'Goa');
   await page.click('#focusEnergyBtn');
-  await page.waitForFunction(name => window.EarthHealthEnergyApp.getState().focusedEnergyName === name, clicked.name);
+  await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().focusedEnergyName === 'Goa');
   const state = await appState(page);
-  const focused = state.energySystems.find(system => system.name === clicked.name);
-  const goa = state.energySystems.find(system => system.name === 'Goa');
-  assert.equal(state.focusedEnergyName, clicked.name);
+  const focused = state.energySystems.find(system => system.name === 'Goa');
+  const other = state.energySystems.find(system => system.name !== 'Goa');
+  assert.equal(state.focusedEnergyName, 'Goa');
   assert.equal(focused.focused, true);
-  assert.equal(goa.focused, false);
+  assert.equal(other.focused, false);
 });
 
 test('Dragging the 3D globe in Energy mode does not select a node on release', async ({ page }) => {
@@ -515,26 +521,27 @@ slowTest('Energy layer hides in 2D map mode and restores in 3D globe mode', asyn
   assert.equal(state.energyLayerVisible, true);
 });
 
-test('Health mode shows manifest HUD buttons and filter panel', async ({ page }) => {
-  await showHealth(page);
+test('Health mode shows manifest HUD without opening filters by default', async ({ page }) => {
+  await showHealth(page, { openFilters: false });
   const state = await appState(page);
   assert.equal(state.healthMode, true);
   assert.equal(state.energyMode, false);
   assert.equal(await page.locator('#showEnergyBtn').isVisible(), false);
   assert.equal(await page.locator('#showHealthBtn').innerText(), 'Hide Manifest');
+  assert.equal(await page.locator('#inspectPanel').evaluate(el => el.classList.contains('visible')), false);
+  // Manifest HUD replaces old hamburger
+  assert.equal(await page.locator('#manifest-hud').evaluate(el => el.classList.contains('visible')), true);
+  assert.equal(await page.locator('#manifestFiltersBtn').isVisible(), true);
+  assert.equal(await page.locator('#manifestFiltersBtn').evaluate(el => el.classList.contains('active')), false);
+  assert.equal(await page.locator('#manifestCrewBtn').isVisible(), true);
+  await closeCrewPanel(page);
+  await page.click('#manifestFiltersBtn');
+  assert.equal(await page.locator('#inspectPanel').evaluate(el => el.classList.contains('visible')), true);
+  assert.equal(await page.locator('#manifestFiltersBtn').evaluate(el => el.classList.contains('active')), true);
   assert.equal(await page.locator('#inspectTitle').innerText(), 'Manifest Filters');
   assert.equal(await page.locator('#healthClusterBtn').isVisible(), true);
   assert.equal(await page.locator('#heightRangeMin').isVisible(), true);
   assert.equal(await page.locator('#heightRangeMax').isVisible(), true);
-  // Manifest HUD replaces old hamburger
-  assert.equal(await page.locator('#manifest-hud').evaluate(el => el.classList.contains('visible')), true);
-  assert.equal(await page.locator('#manifestFiltersBtn').isVisible(), true);
-  assert.equal(await page.locator('#manifestCrewBtn').isVisible(), true);
-  // Filters button toggles inspect panel
-  await page.click('#closeInspectBtn');
-  assert.equal(await page.locator('#inspectPanel').evaluate(el => el.classList.contains('visible')), false);
-  await page.click('#manifestFiltersBtn');
-  assert.equal(await page.locator('#inspectPanel').evaluate(el => el.classList.contains('visible')), true);
   // HUD hides when Manifest closes
   await page.click('#showHealthBtn');
   await page.waitForFunction(() => !window.EarthHealthEnergyApp.getState().healthMode);
@@ -953,7 +960,7 @@ test('Dragging the 3D globe in Health mode does not select a column on release',
 // ── Paragons & Pirates feature tests ─────────────────────────────────────────
 
 test('Cast & Crew panel opens automatically when Manifest activates', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   const state = await appState(page);
   assert.equal(state.crewRollPanelOpen, true);
@@ -962,7 +969,7 @@ test('Cast & Crew panel opens automatically when Manifest activates', async ({ p
 });
 
 test('Cast & Crew panel closes when Manifest deactivates', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   await page.click('#showHealthBtn');
   await page.waitForFunction(() => !window.EarthHealthEnergyApp.getState().healthMode);
@@ -972,7 +979,7 @@ test('Cast & Crew panel closes when Manifest deactivates', async ({ page }) => {
 });
 
 test('Cast & Crew button in manifest HUD toggles crew panel independently', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   // Close via button
   await page.click('#manifestCrewBtn');
@@ -987,21 +994,20 @@ test('Cast & Crew button in manifest HUD toggles crew panel independently', asyn
 });
 
 test('Crew panel title is "Earth Cast & Crew" and shows population count in billions', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   assert.equal(await page.locator('#crewRollTitle').innerText(), 'Earth Cast & Crew');
-  await page.waitForFunction(() => /\d+\.\d+B/.test(document.getElementById('crewRollCount')?.textContent || ''));
+  await page.waitForFunction(() => /8\.3 Billion humans/.test(document.getElementById('crewRollCount')?.textContent || ''));
   const countText = await page.locator('#crewRollCount').innerText();
-  assert.match(countText, /^\d+\.\d+B$/, 'population count should be decimal billions like 4.4B');
+  assert.equal(countText, '8.3 Billion humans');
 });
 
 test('Paragon section has Tara and Nebula sub-sections with correct member counts', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
-  // Top-level Paragon count = 16 (10 Tara + 6 Nebula)
-  assert.equal(await page.locator('#paragonCount').innerText(), '16');
-  assert.equal(await page.locator('#taraCount').innerText(), '10');
-  assert.equal(await page.locator('#nebulaCount').innerText(), '6');
+  assert.equal(await page.locator('#paragonCount').innerText(), '19');
+  assert.equal(await page.locator('#taraCount').innerText(), '12');
+  assert.equal(await page.locator('#nebulaCount').innerText(), '7');
   // Sub-section headers visible
   assert.equal(await page.locator('#taraSubHeader').isVisible(), true);
   assert.equal(await page.locator('#nebulaSubHeader').isVisible(), true);
@@ -1016,7 +1022,7 @@ test('Paragon section has Tara and Nebula sub-sections with correct member count
 });
 
 test('Paragon rows display proficiency orbs and coloured system pills', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   // Vinay is Sensei — should have 4 orbs and laurel SVG
   const vineaRow = page.locator('#nebulaList .crew-row').filter({ hasText: 'Vinay' });
@@ -1031,7 +1037,7 @@ test('Paragon rows display proficiency orbs and coloured system pills', async ({
 });
 
 test('Pirate section has Caught and At Large sub-sections', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   assert.equal(await page.locator('#knownSubHeader').isVisible(), true);
   assert.equal(await page.locator('#unknownSubHeader').isVisible(), true);
@@ -1046,7 +1052,7 @@ test('Pirate section has Caught and At Large sub-sections', async ({ page }) => 
 });
 
 test('Known Pirates have deterministic stickers and pirate system badges', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   const firstRow = page.locator('#knownPiratesList .crew-row').first();
   // Each known pirate row has a sticker and rank badge
@@ -1056,7 +1062,7 @@ test('Known Pirates have deterministic stickers and pirate system badges', async
 });
 
 test('Tara and Nebula sub-sections are collapsible', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   // Tara body starts open
   assert.equal(await page.locator('#taraBody').evaluate(el => el.classList.contains('collapsed')), false);
@@ -1111,7 +1117,7 @@ test('Q0 Paragon/Pirate mode forces all-red globe (manifestQuestion is 0 and pos
 });
 
 test('Paragon and Pirate top-level sections expand and auto-open first sub-section', async ({ page }) => {
-  await showHealth(page);
+  await showHealth(page, { openFilters: false });
   await page.waitForFunction(() => window.EarthHealthEnergyApp.getState().crewRollPanelOpen, null, { timeout: 3000 });
   // Collapse Paragon
   await page.click('#paragonHeader');

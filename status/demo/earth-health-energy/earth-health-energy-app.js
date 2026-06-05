@@ -115,6 +115,15 @@
     return Math.pow(clamp01(a * 0.34 + b * 0.28 + c * 0.22 + d * 0.16), 1.65);
   }
 
+  function manifestAnswerShare(lat, lng, questionIndex = manifestQuestion) {
+    const base = healthShare(lat, lng);
+    if (questionIndex === 0) {
+      const rareParagonSignal = 0.006 + Math.pow(base, 2.2) * 0.074;
+      return clamp01(rareParagonSignal);
+    }
+    return base;
+  }
+
   function fullPopulationMax() {
     return fullPopulationMaxPop || 1;
   }
@@ -179,7 +188,7 @@
           .slice()
           .sort((a, b) => b.pop - a.pop)
           .map(member => {
-            const greenShare = healthShare(member.lat, member.lng);
+            const greenShare = manifestAnswerShare(member.lat, member.lng);
             return {
               id: member.id,
               city: member.city,
@@ -209,7 +218,7 @@
           lng: d.lng,
           pop: d.pop,
           popNorm: populationNorm(d.pop),
-          greenShare: healthShare(d.lat, d.lng),
+          greenShare: manifestAnswerShare(d.lat, d.lng),
           isCluster: !!d.isCluster,
           clusterCount: d.clusterCount || 1,
           anchorCity: d.anchorCity || d.city || d.cityAscii || ''
@@ -237,6 +246,9 @@
   function closePanel() {
     els.inspectPanel.classList.remove('visible');
     if ((healthMode || energyMode) && els.openFiltersBtn) els.openFiltersBtn.classList.add('visible');
+    // Keep Filters button in sync
+    const mfBtn = document.getElementById('manifestFiltersBtn');
+    if (mfBtn) mfBtn.classList.remove('active');
   }
 
   function resetEnergyElevation() {
@@ -810,18 +822,16 @@
         if (activeColumn) matchedSelection = true;
         writeColor(greenColorAttribute.array, i, greenDisabled ? disabledColor : greenColor);
         writeColor(redColorAttribute.array, i, redDisabled ? disabledColor : redColor);
-        const forceRed = manifestQuestion === 0;
-        greenAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0.13 : greenDisabled ? 0.25 : forceRed ? 0 : 0.92;
-        redAlphaAttribute.array[i]   = hasSelection && !activeColumn ? 0.13 : redDisabled   ? 0    : 0.88;
+        greenAlphaAttribute.array[i] = hasSelection && !activeColumn ? 0.13 : greenDisabled ? 0.25 : 0.92;
+        redAlphaAttribute.array[i]   = hasSelection && !activeColumn ? 0.13 : redDisabled   ? 0.25 : 0.88;
       }
       if (hasSelection && !matchedSelection) {
         selectedHealthMeta = null;
         for (let i = 0; i < count; i++) {
           writeColor(greenColorAttribute.array, i, greenDisabled ? disabledColor : greenColor);
           writeColor(redColorAttribute.array, i, redDisabled ? disabledColor : redColor);
-          const forceRed2 = manifestQuestion === 0;
-          greenAlphaAttribute.array[i] = greenDisabled ? 0.25 : forceRed2 ? 0 : 0.92;
-          redAlphaAttribute.array[i]   = redDisabled   ? 0    : 0.88;
+          greenAlphaAttribute.array[i] = greenDisabled ? 0.25 : 0.92;
+          redAlphaAttribute.array[i]   = redDisabled   ? 0.25 : 0.88;
         }
       }
       greenColorAttribute.needsUpdate = true;
@@ -873,7 +883,7 @@
         const popNorm = populationNorm(city.pop);
         const totalHeight = 0.01 + popNorm * 0.24;
         const radius = 0.0025 + popNorm * 0.0095;
-        const greenShare = healthShare(city.lat, city.lng);
+        const greenShare = manifestAnswerShare(city.lat, city.lng);
         const greenHeight = Math.max(0.001, totalHeight * greenShare);
         const redHeight = Math.max(0.001, totalHeight - greenHeight);
         const meta = {
@@ -1209,7 +1219,7 @@
     if (!meta.isCluster) return '';
     const members = Array.isArray(meta.clusterMembers) ? meta.clusterMembers : [];
     const rows = members.length ? members.map(member => {
-      const green = Number.isFinite(member.greenShare) ? member.greenShare : healthShare(member.lat, member.lng);
+      const green = Number.isFinite(member.greenShare) ? member.greenShare : manifestAnswerShare(member.lat, member.lng);
       const greenPct = Math.round(green * 100);
       const redPct = Math.max(0, 100 - greenPct);
       return `
@@ -1244,7 +1254,7 @@
     selectedHealthMeta = meta;
     set2DSelectedHealthDisk(meta);
     if (healthLayer && typeof healthLayer.applyVisualState === 'function') healthLayer.applyVisualState();
-    const green = manifestQuestion === 0 ? 0 : (meta.greenShare || healthShare(meta.lat, meta.lng));
+    const green = Number.isFinite(meta.greenShare) ? meta.greenShare : manifestAnswerShare(meta.lat, meta.lng);
     const red = 1 - green;
     const city = meta.isCluster
       ? `${meta.city || meta.cityAscii || meta.placeLabel || 'City'} Region`
@@ -1416,7 +1426,8 @@
     else startFlight();
     setTimeout(() => {
       if (requestId !== flyRequestId) return;
-      const meta = { ...d, greenShare: healthShare(d.lat, d.lng), redShare: 1 - healthShare(d.lat, d.lng) };
+      const greenShare = manifestAnswerShare(d.lat, d.lng);
+      const meta = { ...d, greenShare, redShare: 1 - greenShare };
       if (healthLayer && healthLayer.showSelectionRing) healthLayer.showSelectionRing(meta);
       selectHealthMeta(meta);
     }, (wasMapMode ? 1100 : 0) + 7600);
@@ -1534,6 +1545,8 @@
         if (els.inspectPanel.classList.contains('visible')) {
           closePanel();
         } else {
+          closeCrewRoll();
+          if (manifestCrewBtn) manifestCrewBtn.classList.remove('active');
           restorePanel();
         }
         manifestFiltersBtn.classList.toggle('active', els.inspectPanel.classList.contains('visible'));
@@ -1541,7 +1554,13 @@
     }
     if (manifestCrewBtn) {
       manifestCrewBtn.addEventListener('click', () => {
-        crewRollPanelOpen ? closeCrewRoll() : openCrewRoll();
+        if (crewRollPanelOpen) {
+          closeCrewRoll();
+        } else {
+          closePanel();
+          if (manifestFiltersBtn) manifestFiltersBtn.classList.remove('active');
+          openCrewRoll();
+        }
         manifestCrewBtn.classList.toggle('active', crewRollPanelOpen);
       });
     }
@@ -1563,11 +1582,13 @@
         resetEnergyElevation();
         selectedEnergySystem = null;
         clearHealthSelection();
-        showPanel('health');
+        els.inspectPanel.classList.remove('visible');
+        if (manifestFiltersBtn) manifestFiltersBtn.classList.remove('active');
         if (els.openFiltersBtn) els.openFiltersBtn.classList.remove('visible');
         // Auto-open Cast & Crew list when Manifest opens
         if (!crewRollPanelOpen) {
           setTimeout(() => {
+            if (!healthMode || els.inspectPanel.classList.contains('visible') || crewRollPanelOpen) return;
             openCrewRoll();
             if (manifestCrewBtn) manifestCrewBtn.classList.add('active');
           }, 120);
@@ -1618,9 +1639,13 @@
           if (mqLabel) mqLabel.textContent = item.childNodes[0].textContent.trim();
           mqDropdown.classList.remove('show');
           updateLegend();
-          updateButtons();
+          refreshHealth();
           // Refresh open info card if visible
-          if (selectedHealthMeta) selectHealthMeta(selectedHealthMeta);
+          if (selectedHealthMeta) {
+            const greenShare = manifestAnswerShare(selectedHealthMeta.lat, selectedHealthMeta.lng);
+            selectedHealthMeta = { ...selectedHealthMeta, greenShare, redShare: 1 - greenShare };
+            selectHealthMeta(selectedHealthMeta);
+          }
         });
       });
       document.addEventListener('click', () => mqDropdown.classList.remove('show'));
@@ -1662,6 +1687,8 @@
       { name:'Akshat',    city:'Lucknow',    lat:26.85, lng:80.95,   level:'Practicing', system:'Technology' },
       { name:'Tharani',   city:'Goa',        lat:15.49, lng:73.82,   level:'Practicing', system:'Technology' },
       { name:'Shashank',  city:'Chennai',    lat:13.08, lng:80.27,   level:'Proficient', system:'Games'      },
+      { name:'Alisha',    city:'Goa',        lat:15.49, lng:73.82,   level:'Practicing', system:'Air Transport' },
+      { name:'Aakash',    city:'Pune',       lat:18.52, lng:73.86,   level:'Practicing', system:'Technology' },
     ];
     // Nebula — the established crew
     const NEBULA_PARAGONS = [
@@ -1671,6 +1698,7 @@
       { name:'Aditi',     city:'Pune',       lat:18.52, lng:73.86,   level:'Expert',     system:'Home'       },
       { name:'Meris',     city:'Bozeman',    lat:45.68, lng:-111.04, level:'Expert',     system:'Health'     },
       { name:'Ahmed',     city:'Goa',        lat:15.49, lng:73.82,   level:'Proficient', system:'Food'       },
+      { name:'Ambarish',  city:'Bengaluru',  lat:12.97, lng:77.59,   level:'Sensei',     system:'Technology' },
     ];
     // Combined for any code that still references PARAGONS
     const PARAGONS = [...TARA_PARAGONS, ...NEBULA_PARAGONS];
@@ -1741,13 +1769,14 @@
 
     // Seed Known Pirates
     const KNOWN_PIRATES = [
-      { name:'Rav',    city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Rukmin', city:'Singapore', lat:1.35,  lng:103.82 },
       { name:'Nayan',  city:'Pune',      lat:18.52, lng:73.86  },
       { name:'Sami',   city:'Pune',      lat:18.52, lng:73.86  },
-      { name:'Rukmin', city:'Singapore', lat:1.35,  lng:103.82 },
+      { name:'Rav',    city:'Pune',      lat:18.52, lng:73.86  },
+      { name:'Priy',   city:'Pune',      lat:18.52, lng:73.86  },
       { name:'Rashm',  city:'Pune',      lat:18.52, lng:73.86  },
       { name:'Sunee',  city:'Pune',      lat:18.52, lng:73.86  },
-      { name:'Priy',   city:'Pune',      lat:18.52, lng:73.86  },
+
     ];
     let knownPirates = [...KNOWN_PIRATES];
 
@@ -1863,11 +1892,6 @@
       document.getElementById('taraCount').textContent   = taraAll.length;
       document.getElementById('nebulaCount').textContent = nebulaAll.length;
 
-      if (pirateCities.length) {
-        const totalPop = pirateCities.reduce((s, c) => s + (c.pop || 0), 0);
-        document.getElementById('crewRollCount').textContent = (totalPop / 1e9).toFixed(1) + 'B';
-      }
-
       taraEl.innerHTML   = buildParagonRows(taraAll,   0);
       nebulaEl.innerHTML = buildParagonRows(nebulaAll, taraAll.length);
 
@@ -1928,8 +1952,6 @@
       if (!pirateCities.length) {
         pirateCities = [...healthCities].sort((a, b) => (b.pop||0) - (a.pop||0));
         document.getElementById('pirateCount').textContent = pirateCities.length.toLocaleString();
-        const totalPop = pirateCities.reduce((s, c) => s + (c.pop || 0), 0);
-        document.getElementById('crewRollCount').textContent = (totalPop / 1e9).toFixed(1) + 'B';
       }
       renderParagons();
       renderKnownPirates();
