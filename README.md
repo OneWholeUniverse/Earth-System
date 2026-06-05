@@ -38,7 +38,6 @@ Elevate Earth to a Paragon System and maintain it there.
 - [ ] Zero borders
 
 ### Level One
-- [ ] Zero tolerance
 - [ ] Zero judgement
 - [ ] Zero blame
 - [ ] Zero shame
