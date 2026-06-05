@@ -19,8 +19,8 @@ Elevate Earth to a Paragon System and maintain it there.
 - [ ] I need to ensure all my subsystems collaborate to achieve my goal.
 - [ ] I need to ensure every subsystem is redundant.
 - [ ] I need to ensure every subsystem meets its goals by taking the path of stationary action.
+- [ ] I need to ensure all actions of my systems are according to zero strings principles.
 - [ ] I need to ensure to record every frame of every action of every subsystem.
-- [ ] I need to ensure all my actions comply with my zero strings principles.
 - [ ] I need to create wisdom from all the recorded frames of all my subsystems.
 
 ## Terms Of Use
