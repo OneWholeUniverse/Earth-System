@@ -1,7 +1,8 @@
 # Earth Operating System
 
 - Earth is the Stage.
-- Environment is the Set.
+- World is the Set.
+- Moment is the Scene.
 - Life are the Actors.
 - Live History are their Stories.
 
