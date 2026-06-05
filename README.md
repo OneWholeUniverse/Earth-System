@@ -1,4 +1,4 @@
-# Spaceship Earth Operating System
+# Earth Operating System
 
 - Earth is the Stage.
 - Environment is the Set.
@@ -30,12 +30,14 @@ Elevate Speaceship Earth to a Paragon System and maintain it there.
 ## Zero Strings Principles
 
 ### Level Zero
-
 - [ ] Zero baggage
 - [ ] Zero cruelty
 - [ ] Zero secrets
 - [ ] Zero money
 - [ ] Zero borders
+
+### Level One
+- [ ] Zero tolerance
 - [ ] Zero judgement
 - [ ] Zero blame
 - [ ] Zero shame
@@ -45,9 +47,6 @@ Elevate Speaceship Earth to a Paragon System and maintain it there.
 - [ ] Zero punishment
 - [ ] Zero regret
 - [ ] Zero resentment
-
-### Level One
-
 - [ ] Zero conscious will
 - [ ] Zero ego
 
@@ -74,5 +73,5 @@ Elevate Speaceship Earth to a Paragon System and maintain it there.
 
 Affectionately yours,
 
-Zero x One Whole World
+Zero
 😌🙏🏽❤️
