@@ -95,8 +95,8 @@ body.health-panel-mode #heightRangeControl{margin-top:4px;padding:14px;border-ra
 body.micro-view #flyPanel{z-index:72}
 
 /* ── Cast & Crew panel ────────────────────────────── */
-#crewRollPanel{position:fixed;top:0;right:0;bottom:0;width:370px;transform:translateX(100%);transition:transform .48s cubic-bezier(.22,1,.36,1);z-index:75;background:rgba(8,14,30,.82);backdrop-filter:blur(32px) saturate(1.4);-webkit-backdrop-filter:blur(32px) saturate(1.4);border-left:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;box-shadow:-24px 0 64px rgba(0,0,0,.55)}
-#crewRollPanel.open{transform:translateX(0)}
+#crewRollPanel{position:fixed;top:0;right:0;bottom:0;width:370px;transform:translateX(100%);transition:transform .48s cubic-bezier(.22,1,.36,1);z-index:75;background:rgba(8,14,30,.82);backdrop-filter:blur(32px) saturate(1.4);-webkit-backdrop-filter:blur(32px) saturate(1.4);border-left:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;box-shadow:-24px 0 64px rgba(0,0,0,.55);pointer-events:none}
+#crewRollPanel.open{transform:translateX(0);pointer-events:auto}
 #crewRollHeader{padding:20px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;gap:12px;background:rgba(255,255,255,.025)}
 #crewRollHeaderLeft{min-width:0}
 #crewRollTitle{font:700 16px/1.2 Inter,system-ui,sans-serif;color:#eef4ff;letter-spacing:-.02em}
@@ -420,7 +420,7 @@ body.micro-view #flyPanel{z-index:72}
 <script>
 window.EARTH_CORE_ASSET_BASE = '../earth-core/assets/';
 </script>
-<script src="../earth-core/earth-core.js?v=stable-flight-1"></script>
+<script src="../earth-core/earth-core.js?v=moonlight-map-5"></script>
 <script src="../shared/geonames.js?v=1"></script>
 <script src="./earth-health-energy-app.js?v=manifest-visual-36"></script>
 </body>

@@ -55,6 +55,12 @@
   const MAPLIBRE_VERSION = '4.1.2';
   const MAPLIBRE_JS_URL = options.mapLibreJsUrl || `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
   const MAPLIBRE_CSS_URL = options.mapLibreCssUrl || `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
+  const MAP_STYLE_URLS = {
+    day: options.mapDayStyleUrl || 'https://tiles.openfreemap.org/styles/bright',
+    night: options.mapNightStyleUrl || options.mapDayStyleUrl || 'https://tiles.openfreemap.org/styles/bright'
+  };
+  const MAP_TERRAIN_SOURCE_ID = 'earth-core-terrain-dem';
+  const MAP_TERRAIN_LAYER_ID = 'earth-core-terrain-hillshade';
 
   const TARGET_CONFIGS = {
     earth: { minRadius: MACRO_MIN_RADIUS, maxRadius: 20.0, defaultRadius: 3.1, discStart: 1.42 },
@@ -89,6 +95,11 @@
   let streetMap = null;
   let mapLibreLoadPromise = null;
   let pendingMapRequest = null;
+  let mapNightModeActive = false;
+  let currentMapStyleMode = 'day';
+  let lastMapSubsolar = null;
+  let lastPolishedStyleMode = null;
+  const mapPaintDefaults = new Map();
   let t = 0;
   let sunFocusBlend = 0.0;
   let mobilePinching = false;
@@ -420,6 +431,10 @@
     return deg * Math.PI / 180;
   }
 
+  function radToDeg(rad) {
+    return rad * 180 / Math.PI;
+  }
+
   function normalizeDeg(deg) {
     return ((deg % 360) + 360) % 360;
   }
@@ -749,6 +764,225 @@
     return mapLibreLoadPromise;
   }
 
+  function normalizeLng(lng) {
+    let value = lng;
+    while (value < -180) value += 360;
+    while (value > 180) value -= 360;
+    return value;
+  }
+
+  function subsolarPoint(date = new Date()) {
+    const days = (date.getTime() - Date.UTC(2000, 0, 1, 12, 0, 0)) / 86400000;
+    const meanAnomaly = degToRad(normalizeDeg(357.529 + 0.98560028 * days));
+    const meanLongitude = normalizeDeg(280.459 + 0.98564736 * days);
+    const eclipticLongitude = degToRad(normalizeDeg(
+      meanLongitude +
+      1.915 * Math.sin(meanAnomaly) +
+      0.020 * Math.sin(2 * meanAnomaly)
+    ));
+    const obliquity = degToRad(23.439 - 0.00000036 * days);
+    const rightAscension = normalizeDeg(radToDeg(Math.atan2(
+      Math.cos(obliquity) * Math.sin(eclipticLongitude),
+      Math.cos(eclipticLongitude)
+    )));
+    const declination = radToDeg(Math.asin(Math.sin(obliquity) * Math.sin(eclipticLongitude)));
+    const gmst = normalizeDeg((18.697374558 + 24.06570982441908 * days) * 15);
+    return { lat: declination, lng: normalizeLng(rightAscension - gmst) };
+  }
+
+  function sunAltitudeSignal(lat, lng, subsolar) {
+    const phi = degToRad(lat);
+    const decl = degToRad(subsolar.lat);
+    const hourAngle = degToRad(normalizeLng(lng - subsolar.lng));
+    return (
+      Math.sin(phi) * Math.sin(decl) +
+      Math.cos(phi) * Math.cos(decl) * Math.cos(hourAngle)
+    );
+  }
+
+  function isMapCenterInNight(lat, lng, date = new Date()) {
+    const subsolar = subsolarPoint(date);
+    lastMapSubsolar = subsolar;
+    return sunAltitudeSignal(lat, lng, subsolar) < 0;
+  }
+
+  function mapStyleModeForLocation(lat, lng) {
+    const center = Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lat, lng }
+      : streetMap && streetMap.getCenter ? streetMap.getCenter() : { lat: 0, lng: 0 };
+    const useNight = isMapCenterInNight(center.lat, center.lng);
+    mapNightModeActive = useNight;
+    return useNight ? 'night' : 'day';
+  }
+
+  function updateBaseMapNightMode(lat, lng) {
+    if (options.mapNightMode === false || !streetMap) return;
+    const nextMode = mapStyleModeForLocation(lat, lng);
+    if (nextMode === currentMapStyleMode) return;
+    const previousMode = currentMapStyleMode;
+    currentMapStyleMode = nextMode;
+    lastPolishedStyleMode = null;
+    if (MAP_STYLE_URLS[nextMode] !== MAP_STYLE_URLS[previousMode]) {
+      mapPaintDefaults.clear();
+      streetMap.setStyle(MAP_STYLE_URLS[nextMode]);
+    } else {
+      tuneVectorMapStyle();
+    }
+    scheduleMapLayerInstall();
+    scheduleVectorMapTune();
+  }
+
+  function scheduleVectorMapTune() {
+    requestAnimationFrame(tuneVectorMapStyle);
+    setTimeout(tuneVectorMapStyle, 100);
+    setTimeout(tuneVectorMapStyle, 500);
+  }
+
+  function layerName(layer) {
+    return `${layer.id || ''} ${layer['source-layer'] || ''}`.toLowerCase();
+  }
+
+  function firstLayerBeforeRoadsAndLabels() {
+    const style = streetMap && streetMap.getStyle ? streetMap.getStyle() : null;
+    const layers = style && Array.isArray(style.layers) ? style.layers : [];
+    const match = layers.find(layer => {
+      const name = layerName(layer);
+      return layer.type === 'line' || layer.type === 'symbol' || /road|transport|place|label/.test(name);
+    });
+    return match ? match.id : undefined;
+  }
+
+  function addTerrainReliefLayer() {
+    if (options.mapTerrain === false) return false;
+    if (!streetMap || !streetMap.isStyleLoaded || !streetMap.isStyleLoaded()) return false;
+    try {
+      if (!streetMap.getSource(MAP_TERRAIN_SOURCE_ID)) {
+        streetMap.addSource(MAP_TERRAIN_SOURCE_ID, {
+          type: 'raster-dem',
+          url: 'https://demotiles.maplibre.org/terrain-tiles/tiles.json',
+          tileSize: 256
+        });
+      }
+      if (!streetMap.getLayer(MAP_TERRAIN_LAYER_ID)) {
+        streetMap.addLayer({
+          id: MAP_TERRAIN_LAYER_ID,
+          type: 'hillshade',
+          source: MAP_TERRAIN_SOURCE_ID,
+          paint: {}
+        }, firstLayerBeforeRoadsAndLabels());
+      }
+      const night = currentMapStyleMode === 'night';
+      streetMap.setPaintProperty(MAP_TERRAIN_LAYER_ID, 'hillshade-exaggeration', night ? 0.5 : 0.45);
+      streetMap.setPaintProperty(MAP_TERRAIN_LAYER_ID, 'hillshade-shadow-color', night ? '#091220' : '#6b6657');
+      streetMap.setPaintProperty(MAP_TERRAIN_LAYER_ID, 'hillshade-highlight-color', night ? '#6f8fb9' : '#fff4d0');
+      streetMap.setPaintProperty(MAP_TERRAIN_LAYER_ID, 'hillshade-accent-color', night ? '#233b5a' : '#9f8e67');
+      return true;
+    } catch (error) {
+      console.warn('Could not add earth-core terrain relief layer.', error);
+      return false;
+    }
+  }
+
+  function paintIfSupported(layerId, property, value) {
+    try {
+      const key = `${layerId}:${property}`;
+      if (!mapPaintDefaults.has(key)) {
+        mapPaintDefaults.set(key, streetMap.getPaintProperty(layerId, property));
+      }
+      streetMap.setPaintProperty(layerId, property, value);
+    } catch (_) {
+      // Different vector styles expose different layer paint contracts.
+    }
+  }
+
+  function restorePaintIfSupported(layerId, property) {
+    try {
+      const key = `${layerId}:${property}`;
+      if (!mapPaintDefaults.has(key)) return;
+      const original = mapPaintDefaults.get(key);
+      streetMap.setPaintProperty(layerId, property, original);
+    } catch (_) {
+      // Different vector styles expose different layer paint contracts.
+    }
+  }
+
+  function tuneVectorMapStyle() {
+    if (!streetMap || !streetMap.isStyleLoaded || !streetMap.isStyleLoaded()) return;
+    if (lastPolishedStyleMode === currentMapStyleMode) return;
+    const style = streetMap.getStyle();
+    const layers = style && Array.isArray(style.layers) ? style.layers : [];
+    const night = currentMapStyleMode === 'night';
+
+    addTerrainReliefLayer();
+
+    layers.forEach(layer => {
+      const name = layerName(layer);
+      if (layer.type === 'symbol') {
+        if (night) {
+          paintIfSupported(layer.id, 'text-color', '#edf4ff');
+          paintIfSupported(layer.id, 'text-halo-color', '#06111f');
+          paintIfSupported(layer.id, 'text-halo-width', 2.1);
+          paintIfSupported(layer.id, 'text-halo-blur', 0.12);
+          paintIfSupported(layer.id, 'icon-opacity', 0.96);
+        } else {
+          restorePaintIfSupported(layer.id, 'text-color');
+          restorePaintIfSupported(layer.id, 'text-halo-color');
+          restorePaintIfSupported(layer.id, 'text-halo-width');
+          restorePaintIfSupported(layer.id, 'text-halo-blur');
+          restorePaintIfSupported(layer.id, 'icon-opacity');
+        }
+      } else if (layer.type === 'line') {
+        if (night && /building/.test(name)) {
+          paintIfSupported(layer.id, 'line-color', '#f1e2bc');
+          paintIfSupported(layer.id, 'line-opacity', 0.94);
+        } else if (night && /boundary/.test(name)) {
+          paintIfSupported(layer.id, 'line-opacity', 0.78);
+        } else if (!night) {
+          restorePaintIfSupported(layer.id, 'line-color');
+          restorePaintIfSupported(layer.id, 'line-opacity');
+        }
+      } else if (layer.type === 'fill') {
+        if (/building/.test(name)) {
+          if (night) {
+            paintIfSupported(layer.id, 'fill-color', '#ead7aa');
+            paintIfSupported(layer.id, 'fill-opacity', 0.9);
+          } else {
+            restorePaintIfSupported(layer.id, 'fill-color');
+            restorePaintIfSupported(layer.id, 'fill-opacity');
+          }
+        } else if (/water|ocean|river|lake/.test(name)) {
+          if (night) {
+            paintIfSupported(layer.id, 'fill-color', /river|lake|water/.test(name) ? '#1b5f87' : '#0a2542');
+          } else {
+            restorePaintIfSupported(layer.id, 'fill-color');
+          }
+        } else if (/park|green|wood|forest|grass|landcover|landuse/.test(name)) {
+          if (night) {
+            paintIfSupported(layer.id, 'fill-color', '#1f6f45');
+            paintIfSupported(layer.id, 'fill-opacity', 0.82);
+          } else {
+            restorePaintIfSupported(layer.id, 'fill-color');
+            restorePaintIfSupported(layer.id, 'fill-opacity');
+          }
+        } else if (/land|background|earth/.test(name)) {
+          if (night) {
+            paintIfSupported(layer.id, 'fill-color', '#0a1220');
+          } else {
+            restorePaintIfSupported(layer.id, 'fill-color');
+          }
+        }
+      } else if (layer.type === 'background') {
+        if (night) {
+          paintIfSupported(layer.id, 'background-color', '#07101e');
+        } else {
+          restorePaintIfSupported(layer.id, 'background-color');
+        }
+      }
+    });
+
+    lastPolishedStyleMode = currentMapStyleMode;
+  }
+
   function initOrUpdateMap(lat, lng, zoom = MICRO_START_ZOOM) {
     if (!window.maplibregl) {
       pendingMapRequest = { lat, lng, zoom };
@@ -764,20 +998,10 @@
 
     pendingMapRequest = null;
     if (!streetMap) {
+      currentMapStyleMode = options.mapNightMode === false ? 'day' : mapStyleModeForLocation(lat, lng);
       streetMap = new window.maplibregl.Map({
         container: mapContainer,
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: 'raster',
-              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-              tileSize: 256,
-              attribution: '&copy; OpenStreetMap Contributors'
-            }
-          },
-          layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
-        },
+        style: MAP_STYLE_URLS[currentMapStyleMode],
         center: [lng, lat],
         zoom,
         pitch: 0,
@@ -787,15 +1011,25 @@
       streetMap.on('zoom', () => {
         if (isMicroView && streetMap.getZoom() < MICRO_EXIT_ZOOM) switchToMacro();
       });
+      streetMap.on('moveend', () => updateBaseMapNightMode());
       streetMap.on('load', () => {
+        tuneVectorMapStyle();
+        scheduleVectorMapTune();
         installStoredMapLayers();
         scheduleMapLayerInstall();
         emit('mapload', { map: streetMap });
       });
-      streetMap.on('styledata', scheduleMapLayerInstall);
+      streetMap.on('styledata', () => {
+        tuneVectorMapStyle();
+        scheduleVectorMapTune();
+        scheduleMapLayerInstall();
+      });
     } else {
       streetMap.jumpTo({ center: [lng, lat], zoom });
       streetMap.resize();
+      updateBaseMapNightMode(lat, lng);
+      tuneVectorMapStyle();
+      scheduleVectorMapTune();
       scheduleMapLayerInstall();
     }
     return streetMap;
@@ -887,14 +1121,20 @@
   }
 
   function installMapLayer(layer) {
-    if (!streetMap || !streetMap.isStyleLoaded || !streetMap.isStyleLoaded()) return false;
-    if (layer.source && !streetMap.getSource(layer.sourceId)) {
-      streetMap.addSource(layer.sourceId, layer.source);
+    if (!streetMap || !streetMap.getStyle || !streetMap.getStyle()) return false;
+    try {
+      if (layer.source && !streetMap.getSource(layer.sourceId)) {
+        streetMap.addSource(layer.sourceId, layer.source);
+      }
+      (layer.layers || []).forEach(mapLayer => {
+        if (!streetMap.getLayer(mapLayer.id)) streetMap.addLayer(mapLayer, layer.beforeId);
+      });
+      return true;
+    } catch (error) {
+      const message = String(error && (error.message || error));
+      if (/style/i.test(message) || /loaded/i.test(message)) return false;
+      throw error;
     }
-    (layer.layers || []).forEach(mapLayer => {
-      if (!streetMap.getLayer(mapLayer.id)) streetMap.addLayer(mapLayer, layer.beforeId);
-    });
-    return true;
   }
 
   function installStoredMapLayers() {
@@ -998,6 +1238,12 @@
         moonScale: currentMoonSizeScale(),
         marsScale: currentMarsSizeScale(),
         sunScale: currentSunSizeScale()
+      },
+      mapNightMode: {
+        enabled: options.mapNightMode !== false,
+        active: mapNightModeActive,
+        style: currentMapStyleMode,
+        subsolar: lastMapSubsolar ? { ...lastMapSubsolar } : null
       },
       orbit: { ...orbit },
       center: dynamicCenter.clone(),

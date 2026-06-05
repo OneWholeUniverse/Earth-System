@@ -48,6 +48,72 @@ const transparentPng = Buffer.from(
   'base64'
 );
 
+function testVectorStyle() {
+  const polygon = coordinates => ({
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [coordinates] },
+    properties: {}
+  });
+  return {
+    version: 8,
+    name: 'earth-core-test-vector-style',
+    sources: {
+      buildings: {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [polygon([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])] }
+      },
+      parks: {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [polygon([[2, 0], [3, 0], [3, 1], [2, 1], [2, 0]])] }
+      },
+      water: {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [polygon([[4, 0], [5, 0], [5, 1], [4, 1], [4, 0]])] }
+      },
+      roads: {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[0, 0], [5, 1]] },
+            properties: {}
+          }]
+        }
+      },
+      labels: {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [0.5, 0.5] },
+            properties: { name: 'Test Place' }
+          }]
+        }
+      }
+    },
+    layers: [
+      { id: 'earth-background', type: 'background', paint: { 'background-color': '#ebe5d7' } },
+      { id: 'water-fill', type: 'fill', source: 'water', paint: { 'fill-color': '#a7cbe8' } },
+      { id: 'park-fill', type: 'fill', source: 'parks', paint: { 'fill-color': '#a8d18d', 'fill-opacity': 0.7 } },
+      { id: 'building-fill', type: 'fill', source: 'buildings', paint: { 'fill-color': '#b9b3a6', 'fill-opacity': 0.75 } },
+      { id: 'building-outline', type: 'line', source: 'buildings', paint: { 'line-color': '#777777', 'line-opacity': 0.5 } },
+      { id: 'road-primary', type: 'line', source: 'roads', paint: { 'line-color': '#f2c94c', 'line-opacity': 0.8, 'line-width': 3 } },
+      {
+        id: 'place-label',
+        type: 'symbol',
+        source: 'labels',
+        paint: {
+          'text-color': '#111111',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1
+        }
+      }
+    ]
+  };
+}
+
 function startStaticServer(root) {
   const server = createServer(async (req, res) => {
     try {
@@ -90,6 +156,7 @@ function chromeExecutablePath() {
 
 async function withCorePage(testBody, options = {}) {
   const server = await startStaticServer(demoRoot);
+  const testStyleUrl = `${server.baseUrl}/__earth-core-test-vector-style.json`;
   const browser = await playwright.chromium.launch({
     headless: true,
     executablePath: chromeExecutablePath()
@@ -121,6 +188,21 @@ async function withCorePage(testBody, options = {}) {
       body: transparentPng
     });
   });
+  await page.route(testStyleUrl, route => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(testVectorStyle())
+    });
+  });
+  await page.addInitScript(styleUrl => {
+    window.EARTH_CORE_OPTIONS = {
+      ...(window.EARTH_CORE_OPTIONS || {}),
+      mapDayStyleUrl: styleUrl,
+      mapNightStyleUrl: styleUrl,
+      mapTerrain: false
+    };
+  }, testStyleUrl);
 
   if (typeof options.init === 'function') {
     await options.init(page, server.baseUrl);
@@ -447,6 +529,106 @@ test('switches between globe and map modes through the public API', async ({ pag
   assert.equal(macroState.canvasOpacity, '1');
   assert.equal(macroState.mapOpacity, '0');
   assert.deepEqual(macroState.viewChanges.map(event => event.mode), ['map', 'globe']);
+});
+
+test('moonlight vector map mode restores day paint and reapplies night paint', async ({ page }) => {
+  await page.evaluate(() => window.EarthSystem.switchToMicro(0, 0, { zoom: 6 }));
+  await page.waitForFunction(() => window.EarthSystem.map() && window.EarthSystem.getState().mapNightMode.subsolar, null, { timeout: 10000 });
+
+  const subsolar = await page.evaluate(() => window.EarthSystem.getState().mapNightMode.subsolar);
+  const nightLat = -subsolar.lat;
+  let nightLng = subsolar.lng + 180;
+  while (nightLng > 180) nightLng -= 360;
+
+  await page.evaluate(({ lat, lng }) => {
+    window.EarthSystem.switchToMicro(lat, lng, { zoom: 6 });
+  }, { lat: nightLat, lng: nightLng });
+  await page.waitForFunction(() => {
+    const map = window.EarthSystem.map();
+    return window.EarthSystem.getState().mapNightMode.active &&
+      map.getPaintProperty('place-label', 'text-color') === '#edf4ff';
+  }, null, { timeout: 4000 });
+  const nightPaint = await page.evaluate(() => {
+    const map = window.EarthSystem.map();
+    return {
+      mode: window.EarthSystem.getState().mapNightMode,
+      label: map.getPaintProperty('place-label', 'text-color'),
+      labelHalo: map.getPaintProperty('place-label', 'text-halo-color'),
+      labelHaloWidth: map.getPaintProperty('place-label', 'text-halo-width'),
+      building: map.getPaintProperty('building-fill', 'fill-color'),
+      buildingOpacity: map.getPaintProperty('building-fill', 'fill-opacity'),
+      green: map.getPaintProperty('park-fill', 'fill-color'),
+      water: map.getPaintProperty('water-fill', 'fill-color'),
+      background: map.getPaintProperty('earth-background', 'background-color')
+    };
+  });
+
+  assert.equal(nightPaint.mode.active, true);
+  assert.equal(nightPaint.mode.style, 'night');
+  assert.equal(nightPaint.label, '#edf4ff');
+  assert.equal(nightPaint.labelHalo, '#06111f');
+  assert.equal(nightPaint.labelHaloWidth, 2.1);
+  assert.equal(nightPaint.building, '#ead7aa');
+  assert.equal(nightPaint.buildingOpacity, 0.9);
+  assert.equal(nightPaint.green, '#1f6f45');
+  assert.equal(nightPaint.water, '#1b5f87');
+  assert.equal(nightPaint.background, '#07101e');
+
+  await page.evaluate(({ lat, lng }) => {
+    window.EarthSystem.switchToMicro(lat, lng, { zoom: 6 });
+  }, subsolar);
+  await page.waitForFunction(() => {
+    const map = window.EarthSystem.map();
+    return !window.EarthSystem.getState().mapNightMode.active &&
+      map.getPaintProperty('place-label', 'text-color') === '#111111';
+  }, null, { timeout: 4000 });
+  const dayPaint = await page.evaluate(() => {
+    const map = window.EarthSystem.map();
+    return {
+      mode: window.EarthSystem.getState().mapNightMode,
+      label: map.getPaintProperty('place-label', 'text-color'),
+      labelHalo: map.getPaintProperty('place-label', 'text-halo-color'),
+      building: map.getPaintProperty('building-fill', 'fill-color'),
+      buildingOpacity: map.getPaintProperty('building-fill', 'fill-opacity'),
+      green: map.getPaintProperty('park-fill', 'fill-color'),
+      water: map.getPaintProperty('water-fill', 'fill-color'),
+      background: map.getPaintProperty('earth-background', 'background-color')
+    };
+  });
+
+  assert.equal(dayPaint.mode.active, false);
+  assert.equal(dayPaint.mode.style, 'day');
+  assert.equal(dayPaint.label, '#111111');
+  assert.equal(dayPaint.labelHalo, '#ffffff');
+  assert.equal(dayPaint.building, '#b9b3a6');
+  assert.equal(dayPaint.buildingOpacity, 0.75);
+  assert.equal(dayPaint.green, '#a8d18d');
+  assert.equal(dayPaint.water, '#a7cbe8');
+  assert.equal(dayPaint.background, '#ebe5d7');
+
+  await page.evaluate(({ lat, lng }) => {
+    window.EarthSystem.switchToMicro(lat, lng, { zoom: 6 });
+  }, { lat: nightLat, lng: nightLng });
+  await page.waitForFunction(() => {
+    const map = window.EarthSystem.map();
+    return window.EarthSystem.getState().mapNightMode.active &&
+      map.getPaintProperty('place-label', 'text-color') === '#edf4ff';
+  }, null, { timeout: 4000 });
+  const nightAgain = await page.evaluate(() => {
+    const map = window.EarthSystem.map();
+    return {
+      mode: window.EarthSystem.getState().mapNightMode,
+      label: map.getPaintProperty('place-label', 'text-color'),
+      building: map.getPaintProperty('building-fill', 'fill-color'),
+      background: map.getPaintProperty('earth-background', 'background-color')
+    };
+  });
+
+  assert.equal(nightAgain.mode.active, true);
+  assert.equal(nightAgain.mode.style, 'night');
+  assert.equal(nightAgain.label, '#edf4ff');
+  assert.equal(nightAgain.building, '#ead7aa');
+  assert.equal(nightAgain.background, '#07101e');
 });
 
 test('map zooming below the exit threshold returns to globe mode', async ({ page }) => {
