@@ -12,15 +12,14 @@
     return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   }
 
-  function labelForParts(city, cityAscii, adminName, country) {
+  function labelForParts(city, cityAscii, adminName) {
     const name = city || cityAscii || 'Unknown city';
-    const region = adminName ? `${adminName}, ${country}` : country;
-    return region ? `${name}, ${region}` : name;
+    return adminName ? `${name}, ${adminName}` : name;
   }
 
   function labelForPlace(place) {
     if (!place) return '';
-    return place.placeLabel || labelForParts(place.city, place.cityAscii, place.adminName, place.country)
+    return place.placeLabel || labelForParts(place.city, place.cityAscii, place.adminName)
       || `${Number(place.lat).toFixed(2)}, ${Number(place.lng).toFixed(2)}`;
   }
 
@@ -72,8 +71,6 @@
     const cityIdx = idx('name') >= 0 ? idx('name') : idx('city');
     const asciiIdx = idx('ascii') >= 0 ? idx('ascii') : idx('city_ascii');
     const adminIdx = idx('adminname') >= 0 ? idx('adminname') : idx('admin_name');
-    const countryIdx = idx('countryname') >= 0 ? idx('countryname') : idx('country');
-    const isoIdx = idx('iso2') >= 0 ? idx('iso2') : idx('country');
     const latIdx = idx('lat');
     const lngIdx = idx('lng');
     const popIdx = idx('population');
@@ -86,23 +83,19 @@
       const city = (row[cityIdx] || row[asciiIdx] || '').trim();
       const cityAscii = (row[asciiIdx] || row[cityIdx] || '').trim();
       const adminName = (row[adminIdx] || '').trim();
-      const country = (row[countryIdx] || '').trim();
-      const iso2 = (row[isoIdx] || '').trim();
       const lat = Number(row[latIdx]);
       const lng = Number(row[lngIdx]);
       const pop = Number(row[popIdx]) || 0;
       const elevation = Number(row[elevationIdx]);
       const timezone = (row[timezoneIdx] || '').trim();
       const feature = (row[featureIdx] || '').trim();
-      const placeLabel = labelForParts(city, cityAscii, adminName, country);
+      const placeLabel = labelForParts(city, cityAscii, adminName);
       const place = {
         id: row[geonameIdx] ? `geonames-${row[geonameIdx]}` : `city-${index}`,
         geonameId: row[geonameIdx] || null,
         city,
         cityAscii,
         adminName,
-        country,
-        iso2,
         lat,
         lng,
         pop,
@@ -112,7 +105,7 @@
         placeLabel,
       };
       if (includeSearchText) {
-        place.searchText = normalizeSearch(`${placeLabel} ${cityAscii} ${country} ${iso2} ${timezone}`);
+        place.searchText = normalizeSearch(`${placeLabel} ${cityAscii} ${timezone}`);
       }
       return place;
     }).filter(place =>

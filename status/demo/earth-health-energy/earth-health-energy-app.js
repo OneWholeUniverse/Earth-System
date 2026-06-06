@@ -173,8 +173,6 @@
         city: placeLabel,
         cityAscii: placeLabel,
         adminName: d.largestCity.adminName || null,
-        country: d.largestCity.country || null,
-        iso2: d.largestCity.iso2 || null,
         placeLabel,
         anchorCity: d.largestCity.city || d.largestCity.cityAscii || '',
         lat: d.largestCity.lat,
@@ -2117,7 +2115,7 @@
     document.getElementById('crewSubmitBtn').addEventListener('click', () => {
       const name = document.getElementById('crewNameInput').value.trim();
       if (!name || !crewSelectedAnswer) return;
-      const newMember = { name, city:'Earth', country:'', lat:0, lng:0, isNew:true };
+      const newMember = { name, city:'Earth', lat:0, lng:0, isNew:true };
       if (crewSelectedAnswer === 'positive') {
         extraParagons.unshift(newMember);
         renderParagons();

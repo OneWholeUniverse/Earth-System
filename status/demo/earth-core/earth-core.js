@@ -852,8 +852,84 @@
     return match ? match.id : undefined;
   }
 
+  function installMapCredits() {
+    if (!mapContainer || mapContainer.querySelector('.earth-core-map-credits')) return;
+
+    if (!document.getElementById('earth-core-map-credit-styles')) {
+      const style = document.createElement('style');
+      style.id = 'earth-core-map-credit-styles';
+      style.textContent = `
+        .earth-core-map-credits{
+          position:absolute;
+          left:12px;
+          bottom:12px;
+          z-index:3;
+          width:190px;
+          border-radius:16px;
+          background:rgba(8,14,24,.72);
+          color:rgba(238,244,255,.86);
+          box-shadow:0 12px 34px rgba(0,0,0,.32);
+          backdrop-filter:blur(14px);
+          -webkit-backdrop-filter:blur(14px);
+          font:700 10px/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+          pointer-events:auto;
+          overflow:hidden;
+        }
+        .earth-core-map-credit-toggle{
+          width:100%;
+          border:1px solid rgba(255,255,255,.14);
+          border-radius:999px;
+          padding:7px 11px;
+          background:rgba(8,14,24,.74);
+          color:rgba(238,244,255,.90);
+          font:850 10px/1.2 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+          text-align:left;
+          cursor:pointer;
+          box-shadow:0 8px 22px rgba(0,0,0,.24);
+        }
+        .earth-core-map-credit-toggle:after{content:"+";float:right;opacity:.72}
+        .earth-core-map-credits.open .earth-core-map-credit-toggle{border-radius:14px 14px 0 0}
+        .earth-core-map-credits.open .earth-core-map-credit-toggle:after{content:"×"}
+        .earth-core-map-credit-panel{
+          display:none;
+          padding:9px 11px 10px;
+          border:1px solid rgba(255,255,255,.12);
+          border-top:0;
+          border-radius:0 0 14px 14px;
+          background:rgba(8,14,24,.82);
+        }
+        .earth-core-map-credits.open .earth-core-map-credit-panel{display:grid;gap:7px}
+        .earth-core-map-credits a{color:inherit;text-decoration:none}
+        .earth-core-map-credits a:hover{text-decoration:underline}
+        @media (max-width:760px){
+          .earth-core-map-credits{left:8px;bottom:8px;width:176px;font-size:9px}
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const credits = document.createElement('div');
+    credits.className = 'earth-core-map-credits';
+    credits.innerHTML = `
+      <button class="earth-core-map-credit-toggle" type="button" aria-expanded="false">Credits</button>
+      <div class="earth-core-map-credit-panel" aria-label="Map credits">
+        <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre</a>
+        <a href="https://www.eorc.jaxa.jp/ALOS/en/aw3d30/" target="_blank" rel="noopener">AW3D30 (JAXA)</a>
+        <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>
+        <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap</a>
+      </div>
+    `;
+    const toggle = credits.querySelector('.earth-core-map-credit-toggle');
+    toggle.addEventListener('click', () => {
+      const open = credits.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    mapContainer.appendChild(credits);
+  }
+
   function addTerrainReliefLayer() {
-    if (options.mapTerrain === false) return false;
+    if (options.mapTerrain !== true) return false;
     if (!streetMap || !streetMap.isStyleLoaded || !streetMap.isStyleLoaded()) return false;
     try {
       if (!streetMap.getSource(MAP_TERRAIN_SOURCE_ID)) {
@@ -1005,8 +1081,10 @@
         center: [lng, lat],
         zoom,
         pitch: 0,
-        interactive: true
+        interactive: true,
+        attributionControl: false
       });
+      installMapCredits();
 
       streetMap.on('zoom', () => {
         if (isMicroView && streetMap.getZoom() < MICRO_EXIT_ZOOM) switchToMacro();

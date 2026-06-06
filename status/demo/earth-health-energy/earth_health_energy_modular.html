@@ -32,7 +32,7 @@ body.micro-view #ui-container{opacity:0;pointer-events:none}
 #app-hud button.active[data-layer="energy"]{background:rgba(212,175,55,.85);color:#111827}
 #app-hud button.active[data-layer="health"]{background:rgba(220,38,38,.85);color:#fff}
 #status-chip{display:none}
-body.micro-view #app-hud{opacity:.18;pointer-events:none}
+body.micro-view #app-hud{display:none;opacity:0;pointer-events:none}
 /* Top-right manifest HUD — mirrors app-hud on left */
 #manifest-hud{position:fixed;top:16px;right:16px;z-index:73;padding:10px 12px;border-radius:12px;background:rgba(8,12,24,.58);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.11);min-width:160px;display:none;flex-direction:column;gap:0}
 #manifest-hud.visible{display:flex}
@@ -420,8 +420,8 @@ body.micro-view #flyPanel{z-index:72}
 <script>
 window.EARTH_CORE_ASSET_BASE = '../earth-core/assets/';
 </script>
-<script src="../earth-core/earth-core.js?v=moonlight-map-5"></script>
-<script src="../shared/geonames.js?v=1"></script>
-<script src="./earth-health-energy-app.js?v=manifest-visual-36"></script>
+<script src="../earth-core/earth-core.js?v=moonlight-map-10"></script>
+<script src="../shared/geonames.js?v=2"></script>
+<script src="./earth-health-energy-app.js?v=manifest-visual-37"></script>
 </body>
 </html>

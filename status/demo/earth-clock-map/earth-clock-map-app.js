@@ -8,21 +8,22 @@
   const EM_SOURCE_ID = 'wstc-em-coordinate-source';
   const EMPTY_FEATURE_COLLECTION = { type: 'FeatureCollection', features: [] };
   const KNOWN_ALTITUDES = new Map([
-    ['mexico|ciudad de mexico|mx', 2240],
-    ['mexico city|ciudad de mexico|mx', 2240],
-    ['pune|maharashtra|in', 560],
-    ['mumbai|maharashtra|in', 14],
-    ['goa|goa|in', 15],
-    ['new york|new york|us', 10],
-    ['victoria|british columbia|ca', 23],
-    ['charlotte|north carolina|us', 229],
+    ['mexico|ciudad de mexico', 2240],
+    ['mexico city|ciudad de mexico', 2240],
+    ['pune|maharashtra', 560],
+    ['mumbai|maharashtra', 14],
+    ['goa|goa', 15],
+    ['panjim|goa', 15],
+    ['new york|new york', 10],
+    ['victoria|british columbia', 23],
+    ['charlotte|north carolina', 229],
   ]);
   const TIMEZONE_DEFAULTS = new Map([
-    ['Asia/Calcutta', { city: 'Panjim', admin: 'Goa', iso2: 'IN' }],
-    ['Asia/Kolkata', { city: 'Panjim', admin: 'Goa', iso2: 'IN' }],
-    ['America/Vancouver', { city: 'Victoria', admin: 'British Columbia', iso2: 'CA' }],
-    ['America/Mexico_City', { city: 'Mexico City', admin: 'Mexico City', iso2: 'MX' }],
-    ['America/New_York', { city: 'New York', admin: 'New York', iso2: 'US' }],
+    ['Asia/Calcutta', { city: 'Panjim', admin: 'Goa' }],
+    ['Asia/Kolkata', { city: 'Panjim', admin: 'Goa' }],
+    ['America/Vancouver', { city: 'Victoria', admin: 'British Columbia' }],
+    ['America/Mexico_City', { city: 'Mexico City', admin: 'Mexico City' }],
+    ['America/New_York', { city: 'New York', admin: 'New York' }],
   ]);
   const clocks = {};
   const els = {
@@ -32,7 +33,7 @@
     status: document.getElementById('statusChip'),
     dayNightMeta: document.getElementById('dayNightMeta'),
     dayNightValue: document.getElementById('dayNightValue'),
-    dayNightTitle: document.querySelector('.clock-card:first-child .clock-title'),
+    dayNightTitle: document.getElementById('dayNightClock')?.closest('.clock-card')?.querySelector('.clock-title'),
     seasonMeta: document.getElementById('seasonMeta'),
     seasonValue: document.getElementById('seasonValue'),
     coordinateTitle: document.querySelector('.coordinate-card .clock-title'),
@@ -114,8 +115,8 @@
     if (!city) return 0;
     if (Number.isFinite(city.elevation)) return city.elevation;
     const keys = [
-      `${normalizeSearch(city.cityAscii)}|${normalizeSearch(city.adminName)}|${normalizeSearch(city.iso2)}`,
-      `${normalizeSearch(city.city)}|${normalizeSearch(city.adminName)}|${normalizeSearch(city.iso2)}`,
+      `${normalizeSearch(city.cityAscii)}|${normalizeSearch(city.adminName)}`,
+      `${normalizeSearch(city.city)}|${normalizeSearch(city.adminName)}`,
     ];
     for (const key of keys) {
       if (KNOWN_ALTITUDES.has(key)) return KNOWN_ALTITUDES.get(key);
@@ -817,7 +818,7 @@
     const nearest = nearestCityToPZero(p0Longitude);
     currentPZero = { lat: p0Surface.latitude, lng: p0Longitude, nearest };
     const place = nearest
-      ? `near ${nearest.city.city}, ${nearest.city.adminName || nearest.city.country}`
+      ? `near ${nearest.city.city}${nearest.city.adminName ? `, ${nearest.city.adminName}` : ''}`
       : 'nearest city loading';
     return `Earth under P0 ${place} | ${Math.abs(p0Longitude).toFixed(2)}°${eastWest} | local ${hh}:${mm}`;
   }
@@ -888,26 +889,7 @@
   function legacyOffsetMinutes(city, date) {
     const zoneOffset = timeZoneOffsetMinutes(date, city.timezone);
     if (Number.isFinite(zoneOffset)) return zoneOffset;
-    const fixedByCountry = {
-      IN: 330,
-      NP: 345,
-      LK: 330,
-      BD: 360,
-      PK: 300,
-      CN: 480,
-      JP: 540,
-      KR: 540,
-      SG: 480,
-      AE: 240,
-    };
-    if (fixedByCountry[city.iso2]) return fixedByCountry[city.iso2];
-    const europeCentral = new Set(['AL', 'AD', 'AT', 'BA', 'BE', 'CH', 'CZ', 'DE', 'DK', 'ES', 'FR', 'HR', 'HU', 'IT', 'LI', 'LU', 'MC', 'ME', 'MK', 'MT', 'NL', 'NO', 'PL', 'RS', 'SE', 'SI', 'SK', 'SM', 'VA']);
-    const europeWestern = new Set(['GB', 'IE', 'PT']);
-    const europeEastern = new Set(['BG', 'CY', 'EE', 'FI', 'GR', 'LV', 'LT', 'MD', 'RO', 'UA']);
-    if (europeCentral.has(city.iso2)) return 60 + (isEuropeDst(date) ? 60 : 0);
-    if (europeWestern.has(city.iso2)) return isEuropeDst(date) ? 60 : 0;
-    if (europeEastern.has(city.iso2)) return 120 + (isEuropeDst(date) ? 60 : 0);
-    if (city.iso2 === 'US') {
+    if (String(city.timezone || '').startsWith('America/')) {
       const admin = city.adminName;
       const dst = isNorthernDst(date) ? 60 : 0;
       const eastern = new Set(['Connecticut', 'Delaware', 'District of Columbia', 'Florida', 'Georgia', 'Indiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'New Hampshire', 'New Jersey', 'New York', 'North Carolina', 'Ohio', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'Vermont', 'Virginia', 'West Virginia']);
@@ -938,7 +920,7 @@
 
   function seasonSchemeForCity(city) {
     if (Math.abs(city.lat) < 23.5) {
-      if (['IN', 'LK', 'BD', 'NP'].includes(city.iso2)) {
+      if (String(city.timezone || '').startsWith('Asia/Kolkata') || normalizeSearch(city.adminName) === 'goa') {
         return {
           climate: 'tropical monsoon',
           labels: ['hot', 'monsoon', 'post-monsoon', 'dry'],
@@ -1279,7 +1261,6 @@
       const exact = cities.find(city =>
         normalizeSearch(city.cityAscii) === normalizeSearch(preferred.city)
         && normalizeSearch(city.adminName) === normalizeSearch(preferred.admin)
-        && city.iso2 === preferred.iso2
       );
       if (exact) return exact;
     }
@@ -1288,7 +1269,7 @@
       const match = cities.find(city => normalizeSearch(city.cityAscii) === normalizeSearch(zoneCity));
       if (match) return match;
     }
-    return cities.find(city => normalizeSearch(city.cityAscii) === normalizeSearch(DEFAULT_CITY) && city.iso2 === 'IN')
+    return cities.find(city => normalizeSearch(city.cityAscii) === normalizeSearch(DEFAULT_CITY) && normalizeSearch(city.adminName) === 'goa')
       || cities.find(city => normalizeSearch(city.cityAscii) === normalizeSearch(DEFAULT_CITY))
       || cities[0];
   }
@@ -1311,7 +1292,7 @@
       const strong = document.createElement('strong');
       strong.textContent = city.city || city.cityAscii;
       const meta = document.createElement('span');
-      meta.textContent = [city.adminName, city.country].filter(Boolean).join(', ');
+      meta.textContent = [city.adminName].filter(Boolean).join(', ');
       text.append(strong, meta);
       const pop = document.createElement('em');
       pop.textContent = city.pop ? Math.round(city.pop).toLocaleString() : '';
@@ -1329,7 +1310,7 @@
     rows.forEach((row, index) => row.classList.toggle('active', index === activeSuggestion));
   }
 
-  function selectCity(city, updateInput, enterMap = false) {
+  function selectCity(city, updateInput, enterMap = false, fly = true) {
     const previousCity = selectedCity || displayedFocusCity;
     selectedCity = city;
     if (updateInput) els.citySearch.value = labelForCity(city);
@@ -1339,10 +1320,10 @@
     const api = earthApi || window.EarthSystem;
     const map = api?.map?.();
     const isMapMode = api?.getState?.().mode === 'map';
-    if (enterMap && isMapMode && api?.switchToMacro) {
+    if (fly && enterMap && isMapMode && api?.switchToMacro) {
       pendingMapReentry = { city };
       api.switchToMacro();
-    } else if (api?.flyToLocation) {
+    } else if (fly && api?.flyToLocation) {
       api.flyToLocation({
         lat: city.lat,
         lng: city.lng,
@@ -1401,7 +1382,7 @@
       const localRange = dayNight.start && dayNight.end
         ? `${formatLegacyLocal(dayNight.start, selectedCity)} to ${formatLegacyLocal(dayNight.end, selectedCity)}`
         : dayNight.meta;
-      els.dayNightTitle.textContent = dayNight.mode === 'night' ? 'Night Arc' : 'Day Arc';
+      if (els.dayNightTitle) els.dayNightTitle.textContent = dayNight.mode === 'night' ? 'Night Arc' : 'Day Arc';
       els.dayNightMeta.textContent = `${shortPlace(selectedCity)} | ${dayNight.skyLabel} | local ${currentLegacyLocal(selectedCity)}`;
       els.dayNightValue.textContent = `T${dayNight.t.toFixed(2)} | ${clock.labels.wstc.P}`;
     }
@@ -1488,9 +1469,20 @@
         selectCityByName: name => {
           const q = normalizeSearch(name);
           const match = cities.find(city => normalizeSearch(city.city) === q || normalizeSearch(city.cityAscii) === q)
-            || cities.find(city => normalizeSearch(`${city.city} ${city.adminName} ${city.country}`).includes(q))
+            || cities.find(city => normalizeSearch(`${city.city} ${city.adminName}`).includes(q))
             || cities.find(city => city.searchText.includes(q));
           if (match) selectCity(match, true, true);
+          return match ? labelForCity(match) : null;
+        },
+        selectNearestCity: (place, options = {}) => {
+          const lat = Number(place?.lat);
+          const lng = Number(place?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          const match = cities.reduce((best, city) => {
+            const score = Math.abs(city.lat - lat) + Math.abs(city.lng - lng);
+            return !best || score < best.score ? { city, score } : best;
+          }, null)?.city;
+          if (match) selectCity(match, true, Boolean(options.enterMap), options.fly !== false);
           return match ? labelForCity(match) : null;
         },
       };

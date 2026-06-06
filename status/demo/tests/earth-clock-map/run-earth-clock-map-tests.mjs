@@ -152,7 +152,7 @@ test('boots with earth-core, shared GeoNames, and full clock-map chrome', async 
   assert.equal(state.cityCount, 233259);
   assert.match(state.selectedCity, /Panjim|Goa/i);
   assert.match(chrome.status, /233,259 cities/);
-  assert.match(chrome.scripts.join('\n'), /\/shared\/geonames\.js\?v=1/);
+  assert.match(chrome.scripts.join('\n'), /\/shared\/geonames\.js\?v=2/);
   assert.match(chrome.dayTitle, /Day Arc|Night Arc/);
   assert.equal(chrome.seasonTitle, 'Season Arc');
   assert.equal(chrome.coordinateTitle, 'Earth Space Time Coordinate');

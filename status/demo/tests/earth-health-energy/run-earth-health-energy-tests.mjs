@@ -362,7 +362,7 @@ test('boots on earth-core and loads the full city dataset', async ({ page }) => 
   await page.click('.dropdown-item[data-target="mars"]');
   await page.waitForFunction(() => document.querySelector('#target-btn .mars-disc'));
   assert.equal(await page.locator('#target-btn .mars-disc').count(), 1);
-  assert.match(await page.evaluate(() => Array.from(document.scripts).map(script => script.src).join('\n')), /\/shared\/geonames\.js\?v=1/);
+  assert.match(await page.evaluate(() => Array.from(document.scripts).map(script => script.src).join('\n')), /\/shared\/geonames\.js\?v=2/);
   assert.equal(await page.locator('#status-chip').evaluate(el => getComputedStyle(el).display), 'none');
   assert.equal(await page.locator('#status-chip').innerText(), '');
 });
