@@ -2,6 +2,7 @@
 
 - Earth is the Stage.
 - World is the Set.
+- Universe is the Studio. 
 - Moment is the Scene.
 - Life are the Actors.
 - Live History are their Stories.
