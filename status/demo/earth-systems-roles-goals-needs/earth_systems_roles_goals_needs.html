@@ -1,0 +1,3493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Earth Systems Roles Goals Needs</title>
+  <style>
+    :root{
+      --bg0:#020611; --bg1:#081224; --bg2:#172554;
+      --panel:rgba(10,18,38,.76); --panel-border:rgba(255,255,255,.14);
+      --text:#eef4ff; --muted:#9fb3d9;
+      --world:#60a5fa; --system:#38bdf8; --role:#c084fc; --goal:#f59e0b; --need:#34d399;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(circle at top,#1e2b59 0%,var(--bg1) 42%,var(--bg0) 100%);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text)}
+    #app{position:fixed;inset:0}
+    canvas{display:block;width:100%;height:100%;cursor:grab}
+    canvas.dragging{cursor:grabbing}
+    .panel{position:absolute;z-index:10;background:var(--panel);border:1px solid var(--panel-border);backdrop-filter:blur(14px);border-radius:18px;box-shadow:0 16px 48px rgba(0,0,0,.28)}
+    .settings{left:16px;top:16px;width:min(360px,calc(100vw - 32px));padding:16px;max-height:calc(100vh - 32px);overflow:auto}
+    .inspector{right:16px;top:16px;width:min(340px,calc(100vw - 32px));padding:16px;display:none;max-height:calc(100vh - 32px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    .inspector.visible{display:block}
+    #helpFab{position:absolute;left:16px;bottom:16px;z-index:11;width:42px;height:42px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(18,23,39,.88);color:var(--text);backdrop-filter:blur(14px);box-shadow:0 12px 28px rgba(0,0,0,.24);font-weight:800;font-size:18px;cursor:pointer}
+    #helpFab:hover{background:rgba(28,35,58,.94)}
+    .help-popover{left:66px;bottom:16px;padding:12px 14px;max-width:260px}
+    .help-popover h3{margin:0 0 8px 0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .help-popover p{margin:0 0 6px 0}
+    .help-popover[hidden]{display:none}
+    #simulationContext{margin-top:10px;font-size:16px;font-weight:800;color:var(--text);line-height:1.35}
+    #traceSection .toggle-row{display:flex;gap:8px;flex-wrap:wrap}
+    #traceSection .toggle-btn{
+      position:relative;
+      border-radius:999px;
+      padding:10px 14px 10px 40px;
+      border:1px solid rgba(255,255,255,.16);
+      background:rgba(255,255,255,.05);
+      color:var(--text);
+      min-height:40px;
+    }
+    #traceSection .toggle-btn::before{
+      content:'';
+      position:absolute;
+      left:10px;
+      top:50%;
+      width:18px;
+      height:18px;
+      border-radius:999px;
+      transform:translateY(-50%);
+      background:rgba(255,255,255,.18);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+      transition:all .18s ease;
+    }
+    #traceSection .toggle-btn.primary,
+    #traceSection .toggle-btn[aria-pressed="true"]{
+      background:linear-gradient(135deg,rgba(56,189,248,.30),rgba(192,132,252,.26));
+      border-color:rgba(125,211,252,.62);
+      box-shadow:0 0 0 1px rgba(125,211,252,.16), 0 8px 22px rgba(56,189,248,.12);
+    }
+    #traceSection .toggle-btn.primary::before,
+    #traceSection .toggle-btn[aria-pressed="true"]::before{
+      background:linear-gradient(135deg,#7dd3fc,#c084fc);
+      box-shadow:0 0 0 1px rgba(255,255,255,.16), 0 0 16px rgba(125,211,252,.28);
+    }
+    #traceMeta{min-height:18px}
+    h1,h2{margin:0 0 6px 0;font-size:18px;line-height:1.2}
+    p,.small,.meta{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
+    .field{margin-top:12px}
+    .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .field input,.field select{width:100%;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13px;outline:none}
+    .field input:focus,.field select:focus{border-color:rgba(125,211,252,.7);box-shadow:0 0 0 3px rgba(125,211,252,.18)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+    button{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13px;cursor:pointer;transition:transform .12s ease,background .12s ease,border-color .12s ease}
+    button:hover{transform:translateY(-1px);background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.24)}
+    button.primary{background:linear-gradient(135deg,rgba(56,189,248,.24),rgba(192,132,252,.18));border-color:rgba(125,211,252,.35)}
+    #removeSelectedBtn{border-color:rgba(248,113,113,.35);background:rgba(239,68,68,.10)}
+    #resetWorldBtn{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.10)}
+    .legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+    .legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+    .swatch{width:10px;height:10px;border-radius:999px;box-shadow:0 0 12px currentColor}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:11px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);margin-bottom:10px}
+    .section{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}
+    .section h3{margin:0 0 8px 0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="panel settings">
+    <h1>My World Status</h1>
+    <p>Welcome to your World. This World is your Stage. You are the Hero of your story. You are an Actor. In your story you play many Roles. For every Role you have a theme or a mission or a Goal. To achieve your Goal in every Role you play on the World Stage, you have many Needs. As the Hero or the Actor, your primary Goal is to Thrive. If you are thriving as an Actor then you are playing all your Roles to your max enjoyment and satisfaction. You can play any Role you want. Any Role that you enjoy playing and are good at. The World will give you what you Need to play your best Roles. Let&apos;s create your Roles and what you Need and then make sure you are satisfied.</p>
+
+    <div class="field">
+      <label for="worldLabel">World label</label>
+      <input id="worldLabel" value="World" />
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="systemsInput">Number of systems</label>
+        <input id="systemsInput" type="number" min="1" max="200" step="1" value="3" />
+      </div>
+      <div class="field">
+        <label for="rolesInput">Roles per system</label>
+        <input id="rolesInput" type="number" min="1" max="20" step="1" value="1" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="needsInput">Needs per role</label>
+      <input id="needsInput" type="number" min="1" max="200" step="1" value="3" />
+    </div>
+
+    <div class="buttons">
+      <button class="primary" id="generateBtn">Create World</button>
+      <button id="resetViewBtn">Fit World</button>
+      <button id="toggleFlowBtn" style="display:none">Toggle Flow</button>
+    </div>
+
+    <p class="small" id="simulationContext" style="margin-top:10px;font-size:15px;font-weight:700;color:var(--text);line-height:1.35">Simulation: Blank World</p>
+
+    <div class="field">
+      <label for="templateSelect">Template</label>
+      <select id="templateSelect">
+        <option value="27-primary-care-systems-sad">27 primary care systems-sad</option>
+        <option value="27-primary-care-systems-happy">27 primary care systems-happy</option>
+        <option value="human-baby">Human Baby – Thrive Ecosystem</option>
+      </select>
+    </div>
+
+    <div class="buttons">
+      <button id="loadTrainingTemplateBtn">Load Training</button>
+      <button id="loadProficientTemplateBtn">Load Proficient</button>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="swatch" style="background:#60a5fa;color:#60a5fa"></span>World</div>
+      <div class="legend-item"><span class="swatch" style="background:#38bdf8;color:#38bdf8"></span>System</div>
+      <div class="legend-item"><span class="swatch" style="background:#c084fc;color:#c084fc"></span>Role</div>
+      <div class="legend-item"><span class="swatch" style="background:#f59e0b;color:#f59e0b"></span>Goal</div>
+      <div class="legend-item"><span class="swatch" style="background:#34d399;color:#34d399"></span>Need</div>
+    </div>
+
+    <p class="small" style="margin-top:12px"></p>
+  </div>
+
+  <div class="panel inspector" id="inspector">
+    <h2 id="inspectorTitle">World System Status</h2>
+    <div class="meta" id="inspectorMeta"></div>
+    <div class="chip" id="inspectorChip">type</div>
+    <div class="meta" id="templateInfo" style="margin-top:8px;">Template: none</div>
+    <div class="meta" id="unmetNeeds" style="margin-top:8px;">Unmet Needs: none</div>
+
+    <div class="section" id="traceSection">
+      <h3>Focus</h3>
+      <div class="toggle-row" style="margin-top:8px">
+        <button class="toggle-btn" id="traceEverythingBtn" aria-pressed="false">Enable Focus</button>
+        <button class="toggle-btn" id="traceIncomingBtn" aria-pressed="false">Enable Focus Needs</button>
+        <button class="toggle-btn" id="traceOutgoingBtn" aria-pressed="false">Enable Focus Goals</button>
+      </div>
+      <div class="small" id="traceMeta" style="margin-top:8px;">Focus is off.</div>
+    </div>
+
+
+    <div class="section">
+      <h3>Identity</h3>
+      <div id="identityWrap" style="display:none">
+        <div class="field" style="margin-top:0">
+          <label for="nodeNameInput">Name</label>
+          <input id="nodeNameInput" type="text" placeholder="Give this node a real-world name" />
+        </div>
+        <div class="field">
+          <label for="nodeDescriptionInput">Description</label>
+          <textarea id="nodeDescriptionInput" placeholder="Describe this system, role, goal, or need"></textarea>
+        </div>
+        <div class="buttons">
+          <button id="saveIdentityBtn">Save Identity</button>
+          <button id="clearIdentityBtn">Clear Identity</button>
+        </div>
+      </div>
+      <div id="identityDisabled" class="small">Identity editing is available for Systems, Roles, Goals, and Needs.</div>
+    </div>
+
+    <div class="section">
+      <h3>Reassign role</h3>
+      <div id="reassignWrap" style="display:none">
+        <div class="field" style="margin-top:0">
+          <label for="reassignSelect">Move this role to another system (by UID)</label>
+          <select id="reassignSelect"></select>
+        </div>
+        <div class="buttons">
+          <button id="reassignBtn">Reassign</button>
+        </div>
+      </div>
+      <div id="reassignDisabled" class="small">Reassignment is available for roles only.</div>
+    </div>
+
+    <div class="section">
+      <h3>Assign goal</h3>
+      <div id="goalAssignWrap" style="display:none">
+        <div class="field" style="margin-top:0">
+          <label for="goalAssignSelect">Choose one unmet Need group to serve in the whole world</label>
+          <select id="goalAssignSelect"></select>
+        </div>
+        <div class="buttons">
+          <button id="assignGoalBtn">Commit</button>
+          <button id="clearGoalBtn">Clear Goal</button>
+        </div>
+        <div class="small" id="goalAssignMeta" style="margin-top:8px;"></div>
+      </div>
+      <div id="goalAssignDisabled" class="small">Goal assignment is available for Goals only.</div>
+    </div>
+
+    <div class="section">
+      <h3>Structure</h3>
+      <div id="structureWrap" style="display:none">
+        <div class="field" style="margin-top:0; max-width:180px;">
+          <label for="structureCountInput">How many to add</label>
+          <input id="structureCountInput" type="number" min="1" max="100" step="1" value="1" />
+        </div>
+        <div class="buttons">
+          <button id="addSystemBtn">Add System(s)</button>
+          <button id="addRoleBtn">Add Role(s)</button>
+          <button id="addNeedBtn">Add Need(s)</button>
+          <button id="removeSelectedBtn">Remove Selected</button>
+          <button id="resetWorldBtn">Reset World</button>
+        </div>
+        <div class="small" id="structureMeta" style="margin-top:8px;"></div>
+      </div>
+      <div id="structureDisabled" class="small">Select World, a System, a Role, or a Need to modify structure.</div>
+    </div>
+
+    <div class="section">
+      <h3>Stats</h3>
+      <div id="worldScore" class="small" style="margin-bottom:8px;"></div>
+      <div class="meta" id="inspectorStats">—</div>
+    </div>
+  </div>
+
+  <button id="helpFab" class="help-fab" aria-expanded="false" aria-controls="helpPopover">?</button>
+  <div id="helpPopover" class="panel help-popover" hidden>
+    <h3>Help</h3>
+    <p>Scroll / Mouse wheel: zoom</p>
+    <p>Drag background: pan</p>
+    <p>Click node: focus on it</p>
+    <p>Drag node: move within its system</p>
+    <p>Focus mode reveals how systems support each other</p>
+  </div>
+  <div id="diagnostics" hidden></div>
+</div>
+
+<script>
+(() => {
+  const app = document.getElementById('app');
+  const canvas = document.createElement('canvas');
+  app.insertBefore(canvas, app.firstChild);
+  const ctx = canvas.getContext('2d');
+
+  const COLORS = {
+    world: '#60a5fa',
+    system: '#38bdf8',
+    role: '#c084fc',
+    goal: '#f59e0b',
+    need: '#34d399',
+    text: '#ecf2ff',
+    muted: '#9fb3d9',
+    flowGoal: 'rgba(245,158,11,0.82)',
+    flowNeed: 'rgba(52,211,153,0.74)'
+  };
+
+  const state = {
+    width: innerWidth,
+    height: innerHeight,
+    dpr: Math.min(devicePixelRatio || 1, 2),
+    camera: { x: 0, y: 0, scale: 1, tx: 0, ty: 0, ts: 1 },
+    nodes: [],
+    nodeMap: new Map(),
+    selectedId: null,
+    rootId: 'W1',
+    showFlow: true,
+    goalAssignments: {},
+    goalNeedNameAssignments: {},
+    goalTargetIdsAssignments: {},
+    currentTemplateInfo: null,
+    traceNodeId: null,
+    traceIncoming: false,
+    traceOutgoing: false,
+    storyStageT: 0,
+    drag: { active: false, nodeId: null, lastWX: 0, lastWY: 0, moved: false },
+    pan: { active: false, sx: 0, sy: 0, cx: 0, cy: 0, moved: false },
+    lastDiagnosticsUpdate: 0,
+    t: 0
+  };
+    const cameraMotion = {
+      active: false,
+      startX: 0, startY: 0, startScale: 1,
+      endX: 0, endY: 0, endScale: 1,
+      elapsed: 0, duration: 1.2
+    };
+
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  const randInt = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+  const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+  const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const MIN_ZOOM = 0.02;
+  const MAX_ZOOM = 100.0;
+
+  function resize() {
+    state.width = innerWidth;
+    state.height = innerHeight;
+    state.dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = state.width * state.dpr;
+    canvas.height = state.height * state.dpr;
+    canvas.style.width = state.width + 'px';
+    canvas.style.height = state.height + 'px';
+    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  function worldToScreen(x, y) {
+    return {
+      x: state.width / 2 + (x - state.camera.x) * state.camera.scale,
+      y: state.height / 2 + (y - state.camera.y) * state.camera.scale
+    };
+  }
+
+  function screenToWorld(x, y) {
+    return {
+      x: state.camera.x + (x - state.width / 2) / state.camera.scale,
+      y: state.camera.y + (y - state.height / 2) / state.camera.scale
+    };
+  }
+
+  function screenToWorldAt(x, y, cameraX, cameraY, cameraScale) {
+    return {
+      x: cameraX + (x - state.width / 2) / cameraScale,
+      y: cameraY + (y - state.height / 2) / cameraScale
+    };
+  }
+
+  function baseRadius(type) {
+    if (type === 'world') return Math.min(state.width, state.height) * 0.33;
+    if (type === 'system') return 60;
+    if (type === 'role') return 42;
+    if (type === 'goal') return 18;
+    if (type === 'need') return 16;
+    return 20;
+  }
+
+  function typeColor(type) { return COLORS[type] || '#fff'; }
+
+  function visibleAlpha(node) {
+    const s = state.camera.scale;
+    if (node.type === 'world' || node.type === 'system') return 1;
+    if (node.type === 'role') return smoothstep(0.22, 0.42, s);
+    return smoothstep(0.42, 0.86, s);
+  }
+
+  function labelAlpha(node) {
+    const s = state.camera.scale;
+    if (node.type === 'world' || node.type === 'system') return smoothstep(0.12, 0.24, s);
+    if (node.type === 'role') return smoothstep(0.46, 0.80, s);
+    return smoothstep(0.95, 1.4, s);
+  }
+
+  function worldBorderAlpha() {
+    return 1 - smoothstep(0.85, 1.8, state.camera.scale);
+  }
+
+  function createNode({ id, label, type, parentId = null, hiddenId = null, displayName = '', description = '', templateKey = '' }) {
+    const node = {
+      id,
+      hiddenId: hiddenId || uid(type),
+      label,
+      displayName,
+      description,
+      templateKey,
+      type,
+      parentId,
+      children: [],
+      depth: 0,
+      x: 0, y: 0, vx: 0, vy: 0,
+      radius: baseRadius(type),
+      targetOrbitRadius: 0,
+      targetOrbitAngle: 0
+    };
+    state.nodes.push(node);
+    state.nodeMap.set(id, node);
+    if (parentId) {
+      const parent = state.nodeMap.get(parentId);
+      parent.children.push(id);
+      node.depth = parent.depth + 1;
+    }
+    return node;
+  }
+
+  function clearGraph() {
+    state.nodes = [];
+    state.nodeMap = new Map();
+    state.selectedId = null;
+    state.goalAssignments = {};
+    state.goalNeedNameAssignments = {};
+    state.goalTargetIdsAssignments = {};
+    state.storyStageT = 0;
+  }
+
+  function translateLayoutSubtree(node, dx, dy) {
+    node.x += dx;
+    node.y += dy;
+    node.children.forEach(id => {
+      const child = state.nodeMap.get(id);
+      if (child) translateLayoutSubtree(child, dx, dy);
+    });
+  }
+
+  function positionSubtree(node, x, y) {
+    translateLayoutSubtree(node, x - node.x, y - node.y);
+  }
+
+  function orbitRadiusForChildren(count, maxReq, gap) {
+    if (count <= 1) return 0;
+    if (count === 2) return maxReq + gap * 0.5;
+    return ((2 * maxReq) + gap) / (2 * Math.sin(Math.PI / count));
+  }
+
+  function roleNeedOrbitRadius(needCount, needReq, goalReq, gap) {
+    if (!needCount) return 0;
+    const ringOrbit = orbitRadiusForChildren(needCount, needReq, gap);
+    const centerClearance = goalReq + needReq + gap;
+    return Math.max(ringOrbit, centerClearance);
+  }
+
+  function updateDiagnostics() {
+    const diagnostics = document.getElementById('diagnostics');
+    if (!diagnostics) return;
+
+    const roleStats = state.nodes.filter(n => n.type === 'role').map(role => {
+      const needDistances = role.children
+        .map(id => state.nodeMap.get(id))
+        .filter(n => n && n.type === 'need')
+        .map(need => Math.hypot(need.x - role.x, need.y - role.y));
+      const goals = role.children.map(id => state.nodeMap.get(id)).filter(n => n && n.type === 'goal');
+      const needs = role.children.map(id => state.nodeMap.get(id)).filter(n => n && n.type === 'need');
+      const avgDistance = needDistances.length
+        ? needDistances.reduce((sum, distance) => sum + distance, 0) / needDistances.length
+        : 0;
+      const maxDeviation = needDistances.length
+        ? Math.max(...needDistances.map(distance => Math.abs(distance - avgDistance)))
+        : 0;
+      const maxOverflow = role.children
+        .map(id => state.nodeMap.get(id))
+        .filter(n => n && n.type === 'need')
+        .reduce((overflow, need) => {
+          const edge = Math.hypot(need.x - role.x, need.y - role.y) + need.radius - role.radius;
+          return Math.max(overflow, edge);
+        }, Number.NEGATIVE_INFINITY);
+      const minGoalNeedGap = goals.length && needs.length
+        ? Math.min(...goals.flatMap(goal => needs.map(need => (
+          Math.hypot(need.x - goal.x, need.y - goal.y) - goal.radius - need.radius
+        ))))
+        : 0;
+
+      return {
+        role: role.id,
+        needs: needDistances.length,
+        avgDistance: Number(avgDistance.toFixed(3)),
+        maxDeviation: Number(maxDeviation.toFixed(3)),
+        maxOverflow: Number((Number.isFinite(maxOverflow) ? maxOverflow : 0).toFixed(3)),
+        minGoalNeedGap: Number(minGoalNeedGap.toFixed(3)),
+        roleRadius: Number(role.radius.toFixed(3))
+      };
+    });
+    const flowPairs = getGoalNeedPairs();
+    const sameRoleFlowPairs = flowPairs.filter(pair => getRoleNodeForChild(pair.source) === getRoleNodeForChild(pair.target)).length;
+    const { satisfiedNeeds } = getNeedStateSets();
+    const systems = state.nodes.filter(n => n.type === 'system');
+    const roles = state.nodes.filter(n => n.type === 'role');
+
+    diagnostics.textContent = JSON.stringify({
+      counts: {
+        systems: systems.length,
+        roles: roles.length,
+        goals: state.nodes.filter(n => n.type === 'goal').length,
+        needs: state.nodes.filter(n => n.type === 'need').length,
+        totalNodes: state.nodes.length
+      },
+      happySystems: systems.filter(system => isSystemHappy(system, satisfiedNeeds)).length,
+      happyRoles: roles.filter(role => isRoleHappy(role, satisfiedNeeds)).length,
+      roleCount: roleStats.length,
+      minNeedsPerRole: roleStats.length ? Math.min(...roleStats.map(r => r.needs)) : 0,
+      maxNeedsPerRole: roleStats.length ? Math.max(...roleStats.map(r => r.needs)) : 0,
+      maxNeedRingDeviation: roleStats.length ? Math.max(...roleStats.map(r => r.maxDeviation)) : 0,
+      maxNeedOverflow: roleStats.length ? Math.max(...roleStats.map(r => r.maxOverflow)) : 0,
+      minGoalNeedGap: roleStats.length ? Math.min(...roleStats.map(r => r.minGoalNeedGap)) : 0,
+      flowPairs: flowPairs.length,
+      sameRoleFlowPairs,
+      systemNames: state.nodes.filter(n => n.type === 'system').map(nodeDisplayText),
+      camera: {
+        tx: Number(state.camera.tx.toFixed(6)),
+        ty: Number(state.camera.ty.toFixed(6)),
+        ts: Number(state.camera.ts.toFixed(6))
+      },
+      sampleRoles: roleStats.slice(0, 3)
+    });
+  }
+
+  
+  function requiredSubtreeRadius(node) {
+    if (!node.children.length) {
+      if (node.type === 'goal') return Math.max(node.radius, 28);
+      if (node.type === 'need') return Math.max(node.radius, 26);
+      return node.radius;
+    }
+
+    const kids = node.children.map(id => state.nodeMap.get(id));
+    // children's own subtree radii are already resolved by recursion
+    const childReqs = kids.map(k => k.requiredRadius || k.radius);
+    const maxReq = Math.max(...childReqs);
+
+    const count = kids.length;
+    const gap = node.type === 'world' ? 18 : 14;
+    const pad = node.type === 'world' ? 34 : 20;
+    const base = baseRadius(node.type);
+
+    const orbit = orbitRadiusForChildren(count, maxReq, gap);
+
+    // reserve cleaner center zone for label on world/system
+    const labelReserve = (node.type === 'world' || node.type === 'system') ? maxReq * 0.25 + 26 : 0;
+
+    const required = Math.max(base, orbit + maxReq + pad + labelReserve);
+    node.requiredRadius = required;
+    node.computedOrbit = orbit;
+    return required;
+  }
+
+  function layoutChildren(parentId) {
+    const parent = state.nodeMap.get(parentId);
+    if (!parent) return;
+    const kids = parent.children.map(id => state.nodeMap.get(id));
+    if (!kids.length) {
+      parent.requiredRadius = parent.radius;
+      return;
+    }
+
+    // Resolve descendants first
+    kids.forEach(k => layoutChildren(k.id));
+
+    // Recompute child display radii for containers now that descendants are known
+    kids.forEach(k => {
+      if (k.type === 'system' || k.type === 'role') {
+        k.radius = Math.max(baseRadius(k.type), k.requiredRadius || k.radius);
+      }
+    });
+
+    const count = kids.length
+    const reqs = kids.map(k => k.requiredRadius || k.radius)
+    const maxReq = Math.max(...reqs)
+    const gap = parent.type === 'world' ? 18 : 14
+    const pad = parent.type === 'world' ? 34 : 20
+    const base = baseRadius(parent.type)
+
+    let orbit = orbitRadiusForChildren(count, maxReq, gap)
+
+    const labelReserve = (parent.type === 'world' || parent.type === 'system') ? maxReq * 0.25 + 26 : 0
+    parent.radius = Math.max(base, orbit + maxReq + pad + labelReserve)
+    parent.requiredRadius = parent.radius
+
+    // Keep the Goal anchored in the inner core of the Role.
+    // Other children keep their normal orbital arrangement.
+    if (parent.type === 'role') {
+      const goalKids = kids.filter(k => k.type === 'goal')
+      const orbitKids = kids.filter(k => k.type !== 'goal')
+      const orbitReqs = orbitKids.map(k => k.requiredRadius || k.radius)
+      const orbitMaxReq = orbitReqs.length ? Math.max(...orbitReqs) : 0
+      const goalMaxReq = goalKids.length ? Math.max(...goalKids.map(k => k.requiredRadius || k.radius)) : 0
+      orbit = roleNeedOrbitRadius(orbitKids.length, orbitMaxReq, goalMaxReq, gap)
+      parent.radius = Math.max(base, orbit + orbitMaxReq + pad, goalMaxReq + pad)
+      parent.requiredRadius = parent.radius
+
+      goalKids.forEach((k) => {
+        k.targetOrbitAngle = -Math.PI / 2
+        k.targetOrbitRadius = 0
+        positionSubtree(k, parent.x, parent.y)
+      })
+
+      const orbitCount = orbitKids.length
+      const step = orbitCount > 0 ? (Math.PI * 2 / orbitCount) : 0
+
+      orbitKids.forEach((k, i) => {
+        k.targetOrbitAngle = -Math.PI / 2 + i * step
+        k.targetOrbitRadius = orbit
+        positionSubtree(
+          k,
+          parent.x + Math.cos(k.targetOrbitAngle) * orbit,
+          parent.y + Math.sin(k.targetOrbitAngle) * orbit
+        )
+      })
+    } else if (parent.type === 'system') {
+      // First role = Prime Role anchored at center
+      const prime = kids[0] || null
+      const orbitKids = kids.slice(1)
+
+      if (prime) {
+        prime.isPrimeRole = true
+        prime.targetOrbitAngle = -Math.PI / 2
+        prime.targetOrbitRadius = 0
+        positionSubtree(prime, parent.x, parent.y)
+      }
+
+      const orbitCount = orbitKids.length
+      const step = orbitCount > 0 ? (Math.PI * 2 / orbitCount) : 0
+
+      orbitKids.forEach((k, i) => {
+        k.isPrimeRole = false
+        k.targetOrbitAngle = -Math.PI / 2 + i * step
+        k.targetOrbitRadius = orbit
+        positionSubtree(
+          k,
+          parent.x + Math.cos(k.targetOrbitAngle) * orbit,
+          parent.y + Math.sin(k.targetOrbitAngle) * orbit
+        )
+      })
+    } else {
+      const step = Math.PI * 2 / count
+
+      kids.forEach((k, i) => {
+        k.targetOrbitAngle = -Math.PI / 2 + i * step
+        k.targetOrbitRadius = orbit
+        positionSubtree(
+          k,
+          parent.x + Math.cos(k.targetOrbitAngle) * orbit,
+          parent.y + Math.sin(k.targetOrbitAngle) * orbit
+        )
+      })
+    }
+  }
+
+  function clearFocusState() {
+    state.traceNodeId = null;
+    state.traceIncoming = false;
+    state.traceOutgoing = false;
+    state.storyStageT = 0;
+    setTraceButtonsUI();
+  }
+
+function buildGraph(worldLabel, systemCount, maxRoles, maxNeeds) {
+    clearFocusState();
+    clearGraph();
+    const world = createNode({ id: 'W1', label: worldLabel || 'World', type: 'world', hiddenId: uid('world') });
+    world.radius = baseRadius('world');
+    world.x = 0; world.y = 0;
+
+    for (let s = 1; s <= systemCount; s++) {
+      const sl = `S${s}`;
+      const sys = createNode({ id: sl, label: sl, type: 'system', parentId: world.id, hiddenId: uid('system') });
+
+      const roleCount = maxRoles;
+      for (let r = 1; r <= roleCount; r++) {
+        const rl = `R${r}.${sl}`;
+        const role = createNode({ id: rl, label: rl, type: 'role', parentId: sys.id, hiddenId: uid('role') });
+
+        const gl = `G.${rl}`;
+        createNode({ id: gl, label: gl, type: 'goal', parentId: role.id, hiddenId: uid('goal') });
+
+        const needCount = maxNeeds;
+        for (let n = 1; n <= needCount; n++) {
+          const nl = `N${n}.${rl}`;
+          createNode({ id: nl, label: nl, type: 'need', parentId: role.id, hiddenId: uid('need') });
+        }
+      }
+    }
+
+    layoutChildren(world.id);
+    centerCamera(true);
+    setTraceButtonsUI();
+    populateReassignOptions();
+    state.selectedId = world.id;
+    updateInspector();
+  }
+
+  function populateReassignOptions() {
+    const sel = document.getElementById('reassignSelect');
+    sel.innerHTML = '';
+    state.nodes.filter(n => n.type === 'system').forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n.hiddenId;
+      opt.textContent = `${n.hiddenId} · ${n.label}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function nextSystemIndex() {
+    const nums = state.nodes
+      .filter(n => n.type === 'system')
+      .map(n => {
+        const m = n.label.match(/^S(\d+)$/);
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    return (nums.length ? Math.max(...nums) : 0) + 1;
+  }
+
+  function nextRoleIndex(systemNode) {
+    const nums = systemNode.children
+      .map(id => state.nodeMap.get(id))
+      .filter(n => n && n.type === 'role')
+      .map(n => {
+        const m = n.label.match(/^R(\d+)\./);
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    return (nums.length ? Math.max(...nums) : 0) + 1;
+  }
+
+  function nextNeedIndex(roleNode) {
+    const nums = roleNode.children
+      .map(id => state.nodeMap.get(id))
+      .filter(n => n && n.type === 'need')
+      .map(n => {
+        const m = n.label.match(/^N(\d+)\./);
+        return m ? parseInt(m[1], 10) : 0;
+      });
+    return (nums.length ? Math.max(...nums) : 0) + 1;
+  }
+
+  function resetStructureBatchCount() {
+    const el = document.getElementById('structureCountInput');
+    if (el) el.value = '1';
+  }
+
+  function getStructureBatchCount() {
+    const el = document.getElementById('structureCountInput');
+    return clamp(parseInt((el && el.value) || '1', 10), 1, 100);
+  }
+
+  
+function resetWorld() {
+  const world = state.nodeMap.get(state.rootId);
+  if (!world) return;
+  state.currentTemplateInfo = null;
+
+  const systemIds = [...world.children];
+
+  systemIds.forEach(id => {
+    const ids = subtreeIds(id);
+    ids.forEach(nid => {
+      delete state.goalAssignments[nid];
+      state.nodeMap.delete(nid);
+    });
+    state.nodes = state.nodes.filter(n => !ids.includes(n.id));
+  });
+
+  world.children = [];
+
+  relayoutWorld();
+  state.selectedId = world.id;
+  centerCamera(false);
+  animateCameraTo(state.camera.tx, state.camera.ty, state.camera.ts, 0.7);
+  updateInspector();
+}
+function relayoutWorld() {
+    const world = state.nodeMap.get(state.rootId);
+    if (!world) return;
+    layoutChildren(world.id);
+    populateReassignOptions();
+    updateInspector();
+  }
+
+  function addSystemToWorld(count = 1) {
+    const world = state.nodeMap.get(state.rootId);
+    if (!world) return;
+    let lastSystem = null;
+
+    for (let i = 0; i < count; i++) {
+      const s = nextSystemIndex();
+      const label = `S${s}`;
+      const sys = createNode({ id: label, label, type: 'system', parentId: world.id, hiddenId: uid('system') });
+
+      const roleLabel = `R1.${label}`;
+      const role = createNode({ id: roleLabel, label: roleLabel, type: 'role', parentId: sys.id, hiddenId: uid('role') });
+      createNode({ id: `G.${roleLabel}`, label: `G.${roleLabel}`, type: 'goal', parentId: role.id, hiddenId: uid('goal') });
+      createNode({ id: `N1.${roleLabel}`, label: `N1.${roleLabel}`, type: 'need', parentId: role.id, hiddenId: uid('need') });
+      lastSystem = sys;
+    }
+
+    relayoutWorld();
+    if (lastSystem) {
+      state.selectedId = lastSystem.id;
+      updateInspector();
+      focusNode(lastSystem);
+    }
+    resetStructureBatchCount();
+  }
+
+  function addRoleToSystem(systemId, count = 1) {
+    const sys = state.nodeMap.get(systemId);
+    if (!sys || sys.type !== 'system') return;
+    let lastRole = null;
+
+    for (let i = 0; i < count; i++) {
+      const r = nextRoleIndex(sys);
+      const label = `R${r}.${sys.label}`;
+      const role = createNode({ id: label, label, type: 'role', parentId: sys.id, hiddenId: uid('role') });
+      createNode({ id: `G.${label}`, label: `G.${label}`, type: 'goal', parentId: role.id, hiddenId: uid('goal') });
+      createNode({ id: `N1.${label}`, label: `N1.${label}`, type: 'need', parentId: role.id, hiddenId: uid('need') });
+      lastRole = role;
+    }
+
+    relayoutWorld();
+    if (lastRole) {
+      state.selectedId = lastRole.id;
+      updateInspector();
+      focusNode(lastRole);
+    }
+    resetStructureBatchCount();
+  }
+
+  function addNeedToRole(roleId, count = 1) {
+    const role = state.nodeMap.get(roleId);
+    if (!role || role.type !== 'role') return;
+    let lastNeed = null;
+
+    for (let i = 0; i < count; i++) {
+      const n = nextNeedIndex(role);
+      const label = `N${n}.${role.label}`;
+      const need = createNode({ id: label, label, type: 'need', parentId: role.id, hiddenId: uid('need') });
+      lastNeed = need;
+    }
+
+    relayoutWorld();
+    if (lastNeed) {
+      state.selectedId = lastNeed.id;
+      updateInspector();
+      focusNode(role);
+    }
+    resetStructureBatchCount();
+  }
+
+  function removeNodeAndSubtree(nodeId) {
+    const node = state.nodeMap.get(nodeId);
+    if (!node || node.type === 'world') return;
+    const parent = state.nodeMap.get(node.parentId);
+
+    // Guardrails:
+    // - cannot remove last role of a system; remove the system instead
+    // - cannot remove last need of a role; remove the role instead
+    if (node.type === 'role' && parent && parent.type === 'system') {
+      const siblingRoles = parent.children
+        .map(id => state.nodeMap.get(id))
+        .filter(n => n && n.type === 'role');
+      if (siblingRoles.length <= 1) return;
+    }
+
+    if (node.type === 'need' && parent && parent.type === 'role') {
+      const siblingNeeds = parent.children
+        .map(id => state.nodeMap.get(id))
+        .filter(n => n && n.type === 'need');
+      if (siblingNeeds.length <= 1) return;
+    }
+
+    const ids = subtreeIds(nodeId);
+
+    ids.forEach(id => { delete state.goalAssignments[id]; delete state.goalNeedNameAssignments[id]; delete state.goalTargetIdsAssignments[id]; });
+
+    if (parent) parent.children = parent.children.filter(id => id !== nodeId);
+    state.nodes = state.nodes.filter(n => !ids.includes(n.id));
+    ids.forEach(id => state.nodeMap.delete(id));
+
+    state.selectedId = parent ? parent.id : state.rootId;
+    relayoutWorld();
+  }
+
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function animateCameraTo(x, y, scale, duration = 1.15) {
+    cameraMotion.active = true;
+    cameraMotion.startX = state.camera.x;
+    cameraMotion.startY = state.camera.y;
+    cameraMotion.startScale = state.camera.scale;
+    cameraMotion.endX = x;
+    cameraMotion.endY = y;
+    cameraMotion.endScale = scale;
+    cameraMotion.elapsed = 0;
+    cameraMotion.duration = duration;
+    state.camera.tx = x;
+    state.camera.ty = y;
+    state.camera.ts = scale;
+  }
+
+  function centerCamera(immediate = false) {
+    const world = state.nodeMap.get(state.rootId);
+    if (!world) {
+      if (immediate) {
+        state.camera.x = 0; state.camera.y = 0; state.camera.scale = 1;
+      }
+      state.camera.tx = 0; state.camera.ty = 0; state.camera.ts = 1;
+      return;
+    }
+
+    // Larger margin so World labels outside the perimeter are also visible.
+    const labelMargin = Math.max(90, world.radius * 0.14);
+    const frameW = (world.radius * 2) + (labelMargin * 2);
+    const frameH = (world.radius * 2) + (labelMargin * 2);
+    const sx = state.width / frameW;
+    const sy = state.height / frameH;
+    const fitScale = clamp(Math.min(sx, sy), MIN_ZOOM, MAX_ZOOM);
+
+    state.camera.tx = world.x;
+    state.camera.ty = world.y;
+    state.camera.ts = fitScale;
+
+    if (immediate) {
+      state.camera.x = world.x;
+      state.camera.y = world.y;
+      state.camera.scale = fitScale;
+    }
+  }
+
+  function fitStoryStage(duration = 0.95) {
+    const story = getStoryWorldLayout();
+    const world = state.nodeMap.get(state.rootId);
+    if (!story || !world) {
+      centerCamera(false);
+      animateCameraTo(state.camera.tx, state.camera.ty, state.camera.ts, duration);
+      return;
+    }
+
+    const stageLabelMargin = Math.max(78, story.stageRadius * 0.16);
+    const frameW = (story.stageRadius * 2) + (stageLabelMargin * 2);
+    const frameH = (story.stageRadius * 2) + (stageLabelMargin * 2);
+    const sx = state.width / frameW;
+    const sy = state.height / frameH;
+    const fitScale = clamp(Math.min(sx, sy), MIN_ZOOM, MAX_ZOOM);
+
+    animateCameraTo(story.centerX, story.centerY, fitScale, duration);
+  }
+
+  function focusStoryStageCinematic() {
+    const world = state.nodeMap.get(state.rootId);
+    if (!world) {
+      fitStoryStage(0.9);
+      return;
+    }
+
+    // Step 1: fit stage fully
+    fitStoryStage(0.85);
+
+    // Step 2: wait, then zoom to ROLE VISIBILITY SCALE
+    const tryZoom = () => {
+      const story = getStoryWorldLayout();
+      if (!story || story.stageRadius < 10) {
+        requestAnimationFrame(tryZoom);
+        return;
+      }
+
+      // Zoom to the scale where ROLE connections are actually visible.
+      // In this app, role-level visibility begins around the roleFadeIn threshold
+      // from getFlowBlend(), so we target that semantic zoom directly.
+      const roleVisibilityScale = 0.34;
+
+      // Still guarantee an inward move from the fitted stage.
+      let roleRevealScale = Math.max(roleVisibilityScale, state.camera.scale * 1.25);
+
+      roleRevealScale = clamp(roleRevealScale, 0.05, 4.2);
+
+      animateCameraTo(story.centerX, story.centerY, roleRevealScale, 1.2);
+    };
+
+    // Elegant delay to let brain adjust to stage
+    setTimeout(() => {
+      tryZoom();
+    }, 2850);
+  }
+
+
+  function subtreeIds(rootId) {
+    const out = [];
+    const stack = [rootId];
+    while (stack.length) {
+      const id = stack.pop();
+      out.push(id);
+      const node = state.nodeMap.get(id);
+      for (const cid of node.children) stack.push(cid);
+    }
+    return out;
+  }
+
+  function moveSubtree(rootId, dx, dy) {
+    for (const id of subtreeIds(rootId)) {
+      const n = state.nodeMap.get(id);
+      n.x += dx; n.y += dy;
+    }
+  }
+
+  function insideParent(node, x, y) {
+    if (!node.parentId) return true;
+    const parent = state.nodeMap.get(node.parentId);
+    const d = dist(x, y, parent.x, parent.y);
+    const maxD = parent.radius - node.radius - (parent.type === 'world' ? 18 : 10);
+    return d <= maxD;
+  }
+
+  function findNodeAt(wx, wy) {
+    const ordered = [...state.nodes].sort((a, b) => b.depth - a.depth || b.radius - a.radius);
+    for (const n of ordered) {
+      if (visibleAlpha(n) < 0.05) continue;
+      if (dist(wx, wy, n.x, n.y) <= n.radius) return n;
+    }
+    return null;
+  }
+
+  function subtreeExtent(node) {
+    let maxD = node.radius;
+    for (const id of subtreeIds(node.id)) {
+      const n = state.nodeMap.get(id);
+      const d = dist(node.x, node.y, n.x, n.y) + n.radius;
+      if (d > maxD) maxD = d;
+    }
+    return maxD;
+  }
+
+  function focusNode(node) {
+    const extent = subtreeExtent(node) + 110;
+    const sx = state.width / (extent * 2);
+    const sy = state.height / (extent * 2);
+    const targetScale = clamp(Math.min(sx, sy), MIN_ZOOM, MAX_ZOOM);
+    animateCameraTo(node.x, node.y, targetScale, 0.95);
+    state.selectedId = node.id;
+    updateInspector();
+  }
+
+  function updateInspector() {
+    const panel = document.getElementById('inspector');
+    const node = state.nodeMap.get(state.selectedId);
+    updateDiagnostics();
+    if (!node) { panel.classList.remove('visible'); return; }
+
+    const { servingGoals, satisfiedNeeds } = getNeedStateSets();
+    const score = getWorldScore();
+
+    panel.classList.add('visible');
+    const simulationEl = document.getElementById('simulationContext');
+    if (simulationEl) {
+      if (state.currentTemplateInfo && state.currentTemplateInfo.name) {
+        const modeName = state.currentTemplateInfo.mode ? state.currentTemplateInfo.mode.charAt(0).toUpperCase() + state.currentTemplateInfo.mode.slice(1) : '';
+        simulationEl.textContent = `Simulation: ${state.currentTemplateInfo.name}${modeName ? ' – ' + modeName : ''}`;
+      } else {
+        simulationEl.textContent = `Simulation: ${nodeDisplayText(state.nodeMap.get(state.rootId) || node)}`;
+      }
+    }
+    const tplInfo = document.getElementById('templateInfo');
+    if (tplInfo && state.currentTemplateInfo) {
+      const modeLabel = state.currentTemplateInfo.mode ? state.currentTemplateInfo.mode.charAt(0).toUpperCase() + state.currentTemplateInfo.mode.slice(1) : '';
+      tplInfo.textContent = `Template: ${state.currentTemplateInfo.name}${modeLabel ? ' – ' + modeLabel : ''}`;
+    }
+
+    const unmetEl = document.getElementById('unmetNeeds');
+    if (unmetEl) {
+      const unmet = state.nodes.filter(n => n.type==='need' && !satisfiedNeeds.has(n.id));
+      unmetEl.textContent = unmet.length ? `Unmet Needs: ${[...new Set(unmet.map(n=>needDisplayName(n)))].join(', ')}` : 'Unmet Needs: none';
+    }
+
+    document.getElementById('inspectorTitle').textContent = nodeDisplayText(node);
+    const descBlock = node.description ? `<br>Description: ${node.description}` : '';
+    document.getElementById('inspectorMeta').innerHTML = `Type: ${node.type}<br>Global ID: ${node.id}<br>Hidden ID: ${node.hiddenId}<br>Parent: ${node.parentId || 'none'}${descBlock}`;
+
+    setTraceButtonsUI();
+
+    const chip = document.getElementById('inspectorChip');
+    chip.textContent = node.type;
+    chip.style.color = typeColor(node.type);
+    chip.style.borderColor = typeColor(node.type) + '66';
+
+    const extra = [];
+    if (node.type === 'goal') extra.push(`State: ${servingGoals.has(node.id) ? 'happy' : 'unhappy'}`);
+    if (node.type === 'need') extra.push(`State: ${satisfiedNeeds.has(node.id) ? 'happy' : 'unhappy'}`);
+    if (node.type === 'role') extra.push(`State: ${isRoleHappy(node, satisfiedNeeds) ? 'happy' : 'unhappy'}`);
+    if (node.type === 'system') extra.push(`State: ${isSystemHappy(node, satisfiedNeeds) ? 'happy' : 'unhappy'}`);
+
+    document.getElementById('worldScore').innerHTML = `World: Goals ${score.happyGoals} / ${score.totalGoals} • Needs ${score.happyNeeds} / ${score.totalNeeds}`;
+
+    document.getElementById('inspectorStats').innerHTML = [
+      `Children: ${node.children.length}`,
+      `Radius: ${node.radius.toFixed(1)}`,
+      `Position: (${node.x.toFixed(1)}, ${node.y.toFixed(1)})`,
+      ...extra
+    ].join('<br>');
+
+    const identityWrap = document.getElementById('identityWrap');
+    const identityDis = document.getElementById('identityDisabled');
+    const editableIdentity = ['system', 'role', 'goal', 'need'].includes(node.type);
+    identityWrap.style.display = editableIdentity ? 'block' : 'none';
+    identityDis.style.display = editableIdentity ? 'none' : 'block';
+    document.getElementById('nodeNameInput').value = node.displayName || '';
+    document.getElementById('nodeDescriptionInput').value = node.description || '';
+
+    const wrap = document.getElementById('reassignWrap');
+    const dis = document.getElementById('reassignDisabled');
+    if (node.type === 'role') {
+      wrap.style.display = 'block';
+      dis.style.display = 'none';
+    } else {
+      wrap.style.display = 'none';
+      dis.style.display = 'block';
+    }
+
+    const goalWrap = document.getElementById('goalAssignWrap');
+    const goalDis = document.getElementById('goalAssignDisabled');
+    const goalSelect = document.getElementById('goalAssignSelect');
+    const goalMeta = document.getElementById('goalAssignMeta');
+
+    if (node.type === 'goal') {
+      goalWrap.style.display = 'block';
+      goalDis.style.display = 'none';
+      goalSelect.innerHTML = '';
+
+      const options = getUnassignedNeedKeys();
+      if (options.length) {
+        options.forEach(key => {
+          const matches = state.nodes.filter(n => n.type === 'need' && getNeedKeyFromLabel(n.label) === key);
+          const unmetCount = matches.filter(n => !satisfiedNeeds.has(n.id)).length;
+          const names = [...new Set(matches.map(needDisplayName))].slice(0, 3).join(', ');
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = `${key} — ${unmetCount} unmet needs${names ? ' · ' + names : ''}`;
+          goalSelect.appendChild(opt);
+        });
+      } else {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No unmet Need groups available';
+        goalSelect.appendChild(opt);
+      }
+
+      const assignedGroup = state.goalAssignments[node.id] || '';
+      const assignedNames = state.goalNeedNameAssignments[node.id] || [];
+      if (assignedNames.length) {
+        goalMeta.textContent = `Currently serving named needs: ${assignedNames.join(', ')}.`;
+      } else if (assignedGroup) {
+        goalMeta.textContent = `Currently serving group: ${assignedGroup}. Committing again replaces it.`;
+      } else {
+        goalMeta.textContent = `Currently unassigned. Select one unmet Need group such as N1.`;
+      }
+    } else {
+      goalWrap.style.display = 'none';
+      goalDis.style.display = 'block';
+    }
+
+    const structureWrap = document.getElementById('structureWrap');
+    const structureDis = document.getElementById('structureDisabled');
+    const structureMeta = document.getElementById('structureMeta');
+    const addSystemBtn = document.getElementById('addSystemBtn');
+    const addRoleBtn = document.getElementById('addRoleBtn');
+    const addNeedBtn = document.getElementById('addNeedBtn');
+    const removeBtn = document.getElementById('removeSelectedBtn');
+
+    const structureEnabled = ['world', 'system', 'role', 'need'].includes(node.type);
+    structureWrap.style.display = structureEnabled ? 'block' : 'none';
+    structureDis.style.display = structureEnabled ? 'none' : 'block';
+
+    addSystemBtn.style.display = node.type === 'world' ? 'inline-block' : 'none';
+    addRoleBtn.style.display = node.type === 'system' ? 'inline-block' : 'none';
+    addNeedBtn.style.display = node.type === 'role' ? 'inline-block' : 'none';
+    removeBtn.style.display = node.type === 'world' ? 'none' : 'inline-block';
+
+    if (node.type === 'world') {
+      structureMeta.textContent = 'Add Systems to the World. New Systems start with 1 Role, 1 Goal, and 1 Need.';
+    } else if (node.type === 'system') {
+      structureMeta.textContent = 'Add Roles to this System. New Roles start with 1 Goal and 1 Need. You cannot remove the last Role; remove the System instead.';
+    } else if (node.type === 'role') {
+      structureMeta.textContent = 'Add Needs to this Role. You cannot remove the last Need; remove the Role instead.';
+    } else if (node.type === 'need') {
+      structureMeta.textContent = 'Remove the selected Need, unless it is the last Need of the Role.';
+    } else {
+      structureMeta.textContent = '';
+    }
+  }
+
+  function systemByHiddenId(hid) {
+    return state.nodes.find(n => n.type === 'system' && n.hiddenId === hid) || null;
+  }
+
+  function reassignRoleByUID(roleId, systemHiddenId) {
+    const role = state.nodeMap.get(roleId);
+    const target = systemByHiddenId(systemHiddenId);
+    if (!role || role.type !== 'role' || !target) return;
+    if (role.parentId === target.id) return;
+
+    const oldParent = state.nodeMap.get(role.parentId);
+    oldParent.children = oldParent.children.filter(id => id !== role.id);
+    target.children.push(role.id);
+    role.parentId = target.id;
+
+    const ang = Math.random() * Math.PI * 2;
+    const rd = Math.max(28, Math.min(target.radius - role.radius - 10, target.radius * 0.58));
+    role.targetOrbitAngle = ang;
+    role.targetOrbitRadius = rd;
+    role.x = lerp(role.x, target.x + Math.cos(ang) * rd, 0.35);
+    role.y = lerp(role.y, target.y + Math.sin(ang) * rd, 0.35);
+
+    const stack = [{ id: role.id, depth: target.depth + 1 }];
+    while (stack.length) {
+      const item = stack.pop();
+      const n = state.nodeMap.get(item.id);
+      n.depth = item.depth;
+      n.children.forEach(cid => stack.push({ id: cid, depth: item.depth + 1 }));
+    }
+
+    layoutChildren(oldParent.id);
+    layoutChildren(target.id);
+    updateInspector();
+  }
+
+  function getNeedKeyFromLabel(label) {
+    const m = label.match(/^(N\d+)\./);
+    return m ? m[1] : null;
+  }
+
+  function getAllNeedGroupKeys() {
+    const keys = new Set();
+    state.nodes.forEach(node => {
+      if (node.type === 'need') {
+        const key = getNeedKeyFromLabel(node.label);
+        if (key) keys.add(key);
+      }
+    });
+    return Array.from(keys).sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+  }
+
+  function getAssignedNeedKeys() {
+    return new Set(Object.values(state.goalAssignments).filter(Boolean));
+  }
+
+  function getUnassignedNeedKeys() {
+    const assigned = getAssignedNeedKeys();
+    return getAllNeedGroupKeys().filter(key => !assigned.has(key));
+  }
+
+  function getGoalNeedPairs() {
+    const pairs = [];
+
+    Object.entries(state.goalTargetIdsAssignments).forEach(([goalId, targetIds]) => {
+      const goal = state.nodeMap.get(goalId);
+      if (!goal || goal.type !== 'goal' || !Array.isArray(targetIds)) return;
+      targetIds.forEach(targetId => {
+        const node = state.nodeMap.get(targetId);
+        if (!node || node.type !== 'need') return;
+        pairs.push({
+          source: goal,
+          target: node,
+          color: 'rgba(212,175,55,0.9)',
+          alpha: 1
+        });
+      });
+    });
+
+    return pairs;
+  }
+
+  function isTracing() {
+    return !!(state.traceNodeId && (state.traceIncoming || state.traceOutgoing));
+  }
+
+  function getTraceNode() {
+    return state.nodeMap.get(state.traceNodeId);
+  }
+
+  function pairTouchesTraceNode(pair, traceNode) {
+    if (!traceNode) return false;
+
+    if (traceNode.type === 'goal') {
+      return (state.traceOutgoing && pair.source && pair.source.id === traceNode.id) ||
+             (state.traceIncoming && pair.target && pair.target.id === traceNode.id);
+    }
+
+    if (traceNode.type === 'need') {
+      return (state.traceIncoming && pair.target && pair.target.id === traceNode.id) ||
+             (state.traceOutgoing && pair.source && pair.source.id === traceNode.id);
+    }
+
+    if (traceNode.type === 'role') {
+      const sourceRole = pair.source && pair.source.type === 'role' ? pair.source : getRoleNodeForChild(pair.source);
+      const targetRole = pair.target && pair.target.type === 'role' ? pair.target : getRoleNodeForChild(pair.target);
+      return (state.traceOutgoing && sourceRole && sourceRole.id === traceNode.id) ||
+             (state.traceIncoming && targetRole && targetRole.id === traceNode.id);
+    }
+
+    if (traceNode.type === 'system') {
+      const sourceSystem = pair.source && pair.source.type === 'system' ? pair.source : getSystemNodeForChild(pair.source);
+      const targetSystem = pair.target && pair.target.type === 'system' ? pair.target : getSystemNodeForChild(pair.target);
+      return (state.traceOutgoing && sourceSystem && sourceSystem.id === traceNode.id) ||
+             (state.traceIncoming && targetSystem && targetSystem.id === traceNode.id);
+    }
+
+    return false;
+  }
+
+  function getTraceAlphaForPair(pair) {
+  if (!isTracing()) return 1;
+  return pairTouchesTraceNode(pair, getTraceNode()) ? 1 : 0.2;
+}
+
+  
+  function isNodeInStory(node) {
+    if (!isTracing()) return false;
+    const story = getStoryWorldLayout();
+    if (!story) return false;
+
+    const system = node.type === 'system' ? node : getSystemNodeForChild(node);
+    const role = node.type === 'role' ? node : ((node.type === 'goal' || node.type === 'need') ? getRoleNodeForChild(node) : null);
+
+    if (system && story.relatedSystemIds.has(system.id)) return true;
+    if (role && story.relatedRoleIds.has(role.id)) return true;
+    return false;
+  }
+
+  function getStoryRenderAlpha(node, baseFade) {
+    if (!isTracing()) return 1;
+    const story = getStoryWorldLayout();
+    if (!story) return baseFade;
+    const system = node.type === 'system' ? node : getSystemNodeForChild(node);
+    const inStory = system && story.relatedSystemIds.has(system.id);
+    return inStory ? 1 : Math.max(0.06, baseFade * 0.22);
+  }
+
+function getNodeTraceAlpha(node) {
+    if (!isTracing()) return 1;
+    const story = getStoryWorldLayout();
+    const traceNode = getTraceNode();
+    if (!traceNode || !story) return 1;
+    if (node.id === traceNode.id) return 1;
+
+    const system = node.type === 'system' ? node : getSystemNodeForChild(node);
+    const role = node.type === 'role' ? node : ((node.type === 'goal' || node.type === 'need') ? getRoleNodeForChild(node) : null);
+
+    if (system && story.relatedSystemIds.has(system.id)) return 1;
+    if (role && story.relatedRoleIds.has(role.id)) return 1;
+
+    if (node.type === 'world') return 0.34;
+    if (system && story.audienceSystemIds.has(system.id)) return 0.14;
+    return 0.12;
+  }
+
+  function setTraceButtonsUI() {
+    const everythingBtn = document.getElementById('traceEverythingBtn');
+    const incomingBtn = document.getElementById('traceIncomingBtn');
+    const outgoingBtn = document.getElementById('traceOutgoingBtn');
+    const traceMeta = document.getElementById('traceMeta');
+    const traceNode = getTraceNode();
+    if (!everythingBtn || !incomingBtn || !outgoingBtn || !traceMeta) return;
+
+    const everythingOn = !!(state.traceNodeId && state.traceIncoming && state.traceOutgoing);
+    const incomingOn = !!(state.traceNodeId && state.traceIncoming);
+    const outgoingOn = !!(state.traceNodeId && state.traceOutgoing);
+
+    everythingBtn.classList.toggle('primary', everythingOn);
+    incomingBtn.classList.toggle('primary', incomingOn);
+    outgoingBtn.classList.toggle('primary', outgoingOn);
+
+    everythingBtn.setAttribute('aria-pressed', everythingOn ? 'true' : 'false');
+    incomingBtn.setAttribute('aria-pressed', incomingOn ? 'true' : 'false');
+    outgoingBtn.setAttribute('aria-pressed', outgoingOn ? 'true' : 'false');
+
+    if (!isTracing() || !traceNode) {
+      traceMeta.textContent = 'Focus is off.';
+    } else {
+      const dirs = [state.traceIncoming ? 'incoming' : '', state.traceOutgoing ? 'outgoing' : ''].filter(Boolean).join(' + ');
+      traceMeta.textContent = `Tracing ${dirs} for ${nodeDisplayText(traceNode)}.`;
+    }
+  }
+
+  function toggleTraceEverything() {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || !['system','role','goal','need'].includes(node.type)) return;
+
+    const sameNodeEverythingOn = state.traceNodeId === node.id && state.traceIncoming && state.traceOutgoing;
+    if (sameNodeEverythingOn) {
+      state.traceNodeId = null;
+      state.traceIncoming = false;
+      state.traceOutgoing = false;
+      centerCamera(false);
+      animateCameraTo(state.camera.tx, state.camera.ty, state.camera.ts, 0.95);
+    } else {
+      state.traceNodeId = node.id;
+      state.traceIncoming = true;
+      state.traceOutgoing = true;
+      focusStoryStageCinematic();
+    }
+    setTraceButtonsUI();
+    updateInspector();
+  }
+
+  function toggleTraceDirection(direction) {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || !['system','role','goal','need'].includes(node.type)) return;
+
+    if (state.traceNodeId !== node.id) {
+      state.traceNodeId = node.id;
+      state.traceIncoming = false;
+      state.traceOutgoing = false;
+    }
+
+    if (direction === 'incoming') state.traceIncoming = !state.traceIncoming;
+    if (direction === 'outgoing') state.traceOutgoing = !state.traceOutgoing;
+
+    if (!state.traceIncoming && !state.traceOutgoing) {
+      state.traceNodeId = null;
+      centerCamera(false);
+      animateCameraTo(state.camera.tx, state.camera.ty, state.camera.ts, 0.95);
+    } else {
+      focusStoryStageCinematic();
+    }
+
+    setTraceButtonsUI();
+    updateInspector();
+  }
+
+
+    document.getElementById('reassignBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type !== 'role') return;
+    reassignRoleByUID(node.id, document.getElementById('reassignSelect').value);
+  });
+
+  document.getElementById('assignGoalBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type !== 'goal') return;
+    const needKey = document.getElementById('goalAssignSelect').value;
+    if (!needKey) return;
+    state.goalAssignments[node.id] = needKey;
+    state.goalTargetIdsAssignments[node.id] = state.nodes
+      .filter(n => n.type === 'need' && getNeedKeyFromLabel(n.label) === needKey)
+      .map(n => n.id);
+    updateInspector();
+  });
+
+  document.getElementById('clearGoalBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type !== 'goal') return;
+    delete state.goalAssignments[node.id];
+    delete state.goalNeedNameAssignments[node.id];
+    delete state.goalTargetIdsAssignments[node.id];
+    updateInspector();
+  });
+
+  document.getElementById('addSystemBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type !== 'world') return;
+    addSystemToWorld(getStructureBatchCount());
+  });
+
+  document.getElementById('addRoleBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type !== 'system') return;
+    addRoleToSystem(node.id, getStructureBatchCount());
+  });
+
+  document.getElementById('addNeedBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type !== 'role') return;
+    addNeedToRole(node.id, getStructureBatchCount());
+  });
+
+  document.getElementById('removeSelectedBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || node.type === 'world') return;
+    removeNodeAndSubtree(node.id);
+  });
+
+  document.getElementById('saveIdentityBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || !['system', 'role', 'goal', 'need'].includes(node.type)) return;
+    node.displayName = (document.getElementById('nodeNameInput').value || '').trim();
+    node.description = (document.getElementById('nodeDescriptionInput').value || '').trim();
+    updateInspector();
+  });
+
+  document.getElementById('clearIdentityBtn').addEventListener('click', () => {
+    const node = state.nodeMap.get(state.selectedId);
+    if (!node || !['system', 'role', 'goal', 'need'].includes(node.type)) return;
+    node.displayName = '';
+    node.description = '';
+    updateInspector();
+  });
+
+  {
+    const loadTrainingBtn = document.getElementById('loadTrainingTemplateBtn');
+    const loadProficientBtn = document.getElementById('loadProficientTemplateBtn');
+    const templateSelect = document.getElementById('templateSelect');
+
+    if (loadTrainingBtn && templateSelect) {
+      loadTrainingBtn.addEventListener('click', () => {
+        loadTemplate(templateSelect.value, 'training');
+      });
+    }
+
+    if (loadProficientBtn && templateSelect) {
+      loadProficientBtn.addEventListener('click', () => {
+        loadTemplate(templateSelect.value, 'proficient');
+      });
+    }
+  }
+
+
+  {
+    const traceEverythingBtn = document.getElementById('traceEverythingBtn');
+    const traceIncomingBtn = document.getElementById('traceIncomingBtn');
+    const traceOutgoingBtn = document.getElementById('traceOutgoingBtn');
+
+    if (traceEverythingBtn) {
+      traceEverythingBtn.addEventListener('click', () => {
+        toggleTraceEverything();
+      });
+    }
+    if (traceIncomingBtn) {
+      traceIncomingBtn.addEventListener('click', () => {
+        toggleTraceDirection('incoming');
+      });
+    }
+    if (traceOutgoingBtn) {
+      traceOutgoingBtn.addEventListener('click', () => {
+        toggleTraceDirection('outgoing');
+      });
+    }
+  }
+
+  {
+    const helpFab = document.getElementById('helpFab');
+    const helpPopover = document.getElementById('helpPopover');
+    if (helpFab && helpPopover) {
+      helpFab.addEventListener('click', () => {
+        const willOpen = helpPopover.hasAttribute('hidden');
+        if (willOpen) {
+          helpPopover.removeAttribute('hidden');
+          helpFab.setAttribute('aria-expanded', 'true');
+        } else {
+          helpPopover.setAttribute('hidden', '');
+          helpFab.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+  }
+
+  document.getElementById('generateBtn').addEventListener('click', () => {
+    const worldLabel = (document.getElementById('worldLabel').value || 'World').trim() || 'World';
+    const systems = clamp(parseInt(document.getElementById('systemsInput').value || '1', 10), 1, 200);
+    const roles = clamp(parseInt(document.getElementById('rolesInput').value || '1', 10), 1, 20);
+    const needs = clamp(parseInt(document.getElementById('needsInput').value || '1', 10), 1, 200);
+    state.currentTemplateInfo = null;
+    buildGraph(worldLabel, systems, roles, needs);
+  });
+
+  document.getElementById('resetWorldBtn').addEventListener('click', () => {
+    resetWorld();
+  });
+
+  document.getElementById('resetViewBtn').addEventListener('click', () => {
+    centerCamera(false);
+    const world = state.nodeMap.get(state.rootId);
+    if (world) {
+      animateCameraTo(state.camera.tx, state.camera.ty, state.camera.ts, 1.45);
+    }
+    state.selectedId = state.rootId;
+    updateInspector();
+  });
+
+  document.getElementById('toggleFlowBtn').addEventListener('click', () => {
+    state.showFlow = !state.showFlow;
+  });
+
+  canvas.addEventListener('mousedown', (e) => {
+    const p = screenToWorld(e.clientX, e.clientY);
+    const hit = findNodeAt(p.x, p.y);
+
+    if (hit) {
+      state.drag.active = true;
+      state.drag.nodeId = hit.id;
+      state.drag.lastWX = p.x;
+      state.drag.lastWY = p.y;
+      state.drag.moved = false;
+      state.selectedId = hit.id;
+      updateInspector();
+      cameraMotion.active = false;
+      canvas.classList.add('dragging');
+      return;
+    }
+
+    cameraMotion.active = false;
+    state.pan.active = true;
+    state.pan.sx = e.clientX;
+    state.pan.sy = e.clientY;
+    state.pan.cx = state.camera.tx;
+    state.pan.cy = state.camera.ty;
+    state.pan.moved = false;
+    canvas.classList.add('dragging');
+  });
+
+  addEventListener('mousemove', (e) => {
+    const p = screenToWorld(e.clientX, e.clientY);
+
+    if (state.drag.active) {
+      const node = state.nodeMap.get(state.drag.nodeId);
+      const dx = p.x - state.drag.lastWX;
+      const dy = p.y - state.drag.lastWY;
+      if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) state.drag.moved = true;
+
+      if (insideParent(node, node.x + dx, node.y + dy)) {
+        moveSubtree(node.id, dx, dy);
+      } else if (node.parentId) {
+        const parent = state.nodeMap.get(node.parentId);
+        const tx = node.x + dx, ty = node.y + dy;
+        const vx = tx - parent.x, vy = ty - parent.y;
+        const d = Math.hypot(vx, vy) || 1e-4;
+        const maxD = parent.radius - node.radius - (parent.type === 'world' ? 18 : 10);
+        const cx = parent.x + (vx / d) * Math.min(d, maxD);
+        const cy = parent.y + (vy / d) * Math.min(d, maxD);
+        moveSubtree(node.id, cx - node.x, cy - node.y);
+      }
+
+      state.drag.lastWX = p.x;
+      state.drag.lastWY = p.y;
+      return;
+    }
+
+    if (state.pan.active) {
+      const dx = (e.clientX - state.pan.sx) / state.camera.ts;
+      const dy = (e.clientY - state.pan.sy) / state.camera.ts;
+      if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) state.pan.moved = true;
+      state.camera.tx = state.pan.cx - dx;
+      state.camera.ty = state.pan.cy - dy;
+    }
+  });
+
+  addEventListener('mouseup', () => {
+    if (state.drag.active && !state.drag.moved && state.drag.nodeId) {
+      focusNode(state.nodeMap.get(state.drag.nodeId));
+    }
+    state.drag.active = false;
+    state.drag.nodeId = null;
+    state.pan.active = false;
+    canvas.classList.remove('dragging');
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    cameraMotion.active = false;
+    const before = screenToWorldAt(e.clientX, e.clientY, state.camera.tx, state.camera.ty, state.camera.ts);
+    const factor = Math.exp(-e.deltaY * 0.0012);
+    const nextScale = clamp(state.camera.ts * factor, MIN_ZOOM, MAX_ZOOM);
+    state.camera.ts = nextScale;
+    const after = screenToWorldAt(e.clientX, e.clientY, state.camera.tx, state.camera.ty, nextScale);
+    state.camera.tx += before.x - after.x;
+    state.camera.ty += before.y - after.y;
+  }, { passive: false });
+
+  function updatePhysics(dt) {
+    const draggedIds = state.drag.active && state.drag.nodeId ? new Set(subtreeIds(state.drag.nodeId)) : null;
+    const story = getStoryWorldLayout();
+
+    for (const node of state.nodes) {
+      if (!node.parentId) continue;
+      if (draggedIds && draggedIds.has(node.id)) continue;
+
+      const parent = state.nodeMap.get(node.parentId);
+      let tx = parent.x + Math.cos(node.targetOrbitAngle) * node.targetOrbitRadius;
+      let ty = parent.y + Math.sin(node.targetOrbitAngle) * node.targetOrbitRadius;
+
+      const storyTarget = getStoryTargetForNode(node, story);
+      if (storyTarget) {
+        tx = storyTarget.x;
+        ty = storyTarget.y;
+      }
+
+      node.vx += (tx - node.x) * 0.015;
+      node.vy += (ty - node.y) * 0.015;
+      node.vx *= 0.92;
+      node.vy *= 0.92;
+    }
+
+    const groups = new Map();
+    for (const node of state.nodes) {
+      if (!node.parentId) continue;
+      if (!groups.has(node.parentId)) groups.set(node.parentId, []);
+      groups.get(node.parentId).push(node);
+    }
+
+    for (const siblings of groups.values()) {
+      for (let i = 0; i < siblings.length; i++) {
+        for (let j = i + 1; j < siblings.length; j++) {
+          const a = siblings[i], b = siblings[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) || 1e-4;
+          const minD = a.radius + b.radius + 10;
+          if (d < minD) {
+            const overlap = (minD - d) * 0.5;
+            const nx = dx / d, ny = dy / d;
+            a.x -= nx * overlap; a.y -= ny * overlap;
+            b.x += nx * overlap; b.y += ny * overlap;
+          }
+        }
+      }
+    }
+
+    for (const node of state.nodes) {
+      if (node.id === state.rootId) continue;
+      if (draggedIds && draggedIds.has(node.id)) continue;
+      node.x += node.vx * dt * 60;
+      node.y += node.vy * dt * 60;
+
+      const parent = state.nodeMap.get(node.parentId);
+      const storyTarget = getStoryTargetForNode(node, story);
+
+      if (!storyTarget) {
+        const dx = node.x - parent.x, dy = node.y - parent.y;
+        const d = Math.hypot(dx, dy) || 1e-4;
+        const maxD = parent.radius - node.radius - (parent.type === 'world' ? 18 : 10);
+        if (d > maxD) {
+          node.x = parent.x + (dx / d) * maxD;
+          node.y = parent.y + (dy / d) * maxD;
+          node.vx *= 0.55;
+          node.vy *= 0.55;
+        }
+      }
+    }
+
+    const stageTarget = isTracing() ? 1 : 0;
+    state.storyStageT = lerp(state.storyStageT, stageTarget, Math.min(1, dt * 7.5));
+
+    if (cameraMotion.active) {
+      cameraMotion.elapsed += dt;
+      const t = Math.min(1, cameraMotion.elapsed / cameraMotion.duration);
+      const e = easeInOutCubic(t);
+      state.camera.x = lerp(cameraMotion.startX, cameraMotion.endX, e);
+      state.camera.y = lerp(cameraMotion.startY, cameraMotion.endY, e);
+      state.camera.scale = lerp(cameraMotion.startScale, cameraMotion.endScale, e);
+      state.camera.tx = cameraMotion.endX;
+      state.camera.ty = cameraMotion.endY;
+      state.camera.ts = cameraMotion.endScale;
+      if (t >= 1) cameraMotion.active = false;
+    } else {
+      state.camera.x = lerp(state.camera.x, state.camera.tx, 0.14);
+      state.camera.y = lerp(state.camera.y, state.camera.ty, 0.14);
+      state.camera.scale = lerp(state.camera.scale, state.camera.ts, 0.14);
+    }
+
+    if (state.t - state.lastDiagnosticsUpdate > 0.25) {
+      updateDiagnostics();
+      state.lastDiagnosticsUpdate = state.t;
+    }
+  }
+
+  function rgba(hex, a) {
+    const h = hex.replace('#', '');
+    const x = parseInt(h, 16);
+    return `rgba(${(x>>16)&255},${(x>>8)&255},${x&255},${a})`;
+  }
+
+  function fitText(text, maxWidth, fontSize) {
+    ctx.font = `600 ${fontSize}px Inter, sans-serif`;
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let t = text;
+    while (t.length > 3 && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  function nodeDisplayText(node) {
+    return (node.displayName && node.displayName.trim()) ? node.displayName.trim() : node.label;
+  }
+
+  function needDisplayName(node) {
+    return (node.displayName && node.displayName.trim()) ? node.displayName.trim() : getNeedKeyFromLabel(node.label) || node.label;
+  }
+
+  function getNodeFocusAlpha(node) {
+    const selected = state.nodeMap.get(state.selectedId);
+    if (!selected || !['goal', 'need'].includes(selected.type)) return 1;
+
+    const pairs = getGoalNeedPairs();
+    const connectedIds = new Set([selected.id]);
+    pairs.forEach(pair => {
+      if (pair.source.id === selected.id || pair.target.id === selected.id) {
+        connectedIds.add(pair.source.id);
+        connectedIds.add(pair.target.id);
+      }
+    });
+
+    if (connectedIds.has(node.id)) return 1;
+
+    // Keep ancestors visible enough for context
+    let current = node;
+    while (current && current.parentId) {
+      current = state.nodeMap.get(current.parentId);
+      if (current && connectedIds.has(current.id)) return 0.45;
+    }
+
+    return 0.16;
+  }
+
+  function drawBackground() {
+    for (let i = 0; i < 40; i++) {
+      const x = (i * 157.3) % state.width;
+      const y = ((i * 83.7) + (state.t * 8)) % state.height;
+      const r = 1 + (i % 3) * 0.6;
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawNode(node, alpha) {
+    const p = worldToScreen(node.x, node.y);
+    const rr = node.radius * state.camera.scale;
+    if (rr < 1.2) return;
+
+    const { servingGoals, satisfiedNeeds } = getNeedStateSets();
+
+    let fillColor = typeColor(node.type);
+    let borderColor = typeColor(node.type);
+    let useDirectFill = false;
+    let statusStrokeColor = null;
+
+    if (node.type === 'need') {
+      fillColor = satisfiedNeeds.has(node.id) ? '#16a34a' : '#ef4444';
+      borderColor = '#22c55e';
+    } 
+    else if (node.type === 'goal') {
+      fillColor = servingGoals.has(node.id) ? '#15803d' : '#ef4444';
+      borderColor = '#d4af37';
+    } 
+    else if (node.type === 'role') {
+      borderColor = typeColor('role'); // keep purple identity
+      if (isRoleHappy(node, satisfiedNeeds)) {
+        fillColor = 'rgba(34,197,94,0.42)';
+        statusStrokeColor = 'rgba(34,197,94,0.78)';
+      } else {
+        fillColor = 'rgba(239,68,68,0.56)';
+        statusStrokeColor = 'rgba(248,113,113,0.88)';
+      }
+      useDirectFill = true;
+    } 
+    else if (node.type === 'system') {
+      borderColor = typeColor('system'); // keep blue identity
+      if (isSystemHappy(node, satisfiedNeeds)) {
+        fillColor = 'rgba(34,197,94,0.32)';
+        statusStrokeColor = 'rgba(34,197,94,0.72)';
+      } else {
+        fillColor = 'rgba(239,68,68,0.34)';
+        statusStrokeColor = 'rgba(248,113,113,0.76)';
+      }
+      useDirectFill = true;
+    }
+
+    const selected = node.id === state.selectedId;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    const glow = ctx.createRadialGradient(p.x, p.y, rr * 0.2, p.x, p.y, rr * 1.55);
+    if (useDirectFill) {
+      glow.addColorStop(0, fillColor);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+    } else {
+      glow.addColorStop(0, rgba(fillColor, 0.18));
+      glow.addColorStop(1, rgba(fillColor, 0));
+    }
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr * 1.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    const fill = ctx.createRadialGradient(p.x - rr * 0.28, p.y - rr * 0.35, rr * 0.12, p.x, p.y, rr);
+    if (useDirectFill) {
+      fill.addColorStop(0, fillColor);
+      fill.addColorStop(1, 'rgba(0,0,0,0)');
+    } else {
+      fill.addColorStop(0, rgba(fillColor, node.type === 'world' ? 0.24 : 0.30));
+      fill.addColorStop(1, rgba(fillColor, node.type === 'world' ? 0.08 : 0.13));
+    }
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = selected ? 3 : 2;
+    ctx.strokeStyle = selected ? 'rgba(255,255,255,0.9)' : rgba(borderColor, node.type === 'world' ? 0.58 : 0.95);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (statusStrokeColor && rr > 5) {
+      ctx.lineWidth = Math.max(1.5, Math.min(5, rr * 0.018));
+      ctx.strokeStyle = statusStrokeColor;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(1, rr - ctx.lineWidth * 1.5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (rr > 18) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = statusStrokeColor || rgba(borderColor, 0.22);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rr * 0.74, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  
+  function drawArcText(text, cx, cy, radius, startAngle, endAngle, font, fillStyle, alpha, reverseOrder=false) {
+    if (!text || radius <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = font;
+    ctx.fillStyle = fillStyle;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let chars = [...text];
+    if (reverseOrder) chars = chars.reverse();
+
+    const widths = chars.map(ch => ctx.measureText(ch).width);
+    const totalWidth = widths.reduce((a, b) => a + b, 0);
+    const arcSpan = endAngle - startAngle;
+    const dir = arcSpan >= 0 ? 1 : -1;
+    const textArc = Math.min(Math.abs(arcSpan) * 0.92, totalWidth / radius);
+    let angle = (startAngle + endAngle) / 2 - dir * textArc / 2;
+
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      const w = widths[i];
+      const charArc = (w / radius) * dir;
+      angle += charArc / 2;
+
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      let rot = angle + Math.PI / 2;
+      // Keep glyphs upright on screen.
+      if (rot > Math.PI / 2) rot -= Math.PI;
+      if (rot < -Math.PI / 2) rot += Math.PI;
+
+      ctx.rotate(rot);
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+
+      angle += charArc / 2;
+    }
+
+    ctx.restore();
+  }
+
+
+  function drawArcTextCurved(text, cx, cy, radius, startAngle, endAngle, font, fillStyle, alpha, reverseOrder=false) {
+    if (!text || radius <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = font;
+    ctx.fillStyle = fillStyle;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let chars = [...text];
+    if (reverseOrder) chars = chars.reverse();
+
+    const widths = chars.map(ch => ctx.measureText(ch).width);
+    const totalWidth = widths.reduce((a, b) => a + b, 0);
+    const arcSpan = endAngle - startAngle;
+    const dir = arcSpan >= 0 ? 1 : -1;
+    const textArc = Math.min(Math.abs(arcSpan) * 0.88, totalWidth / radius);
+    let angle = (startAngle + endAngle) / 2 - dir * textArc / 2;
+
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      const w = widths[i];
+      const charArc = (w / radius) * dir;
+      angle += charArc / 2;
+
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      let rot = angle + Math.PI / 2;
+      if (rot > Math.PI / 2) rot -= Math.PI;
+      if (rot < -Math.PI / 2) rot += Math.PI;
+
+      ctx.rotate(rot);
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+
+      angle += charArc / 2;
+    }
+    ctx.restore();
+  }
+
+  function closestWorldBoundaryAnchor(worldNode) {
+    const dx = state.camera.x - worldNode.x;
+    const dy = state.camera.y - worldNode.y;
+    let angle = Math.atan2(dy, dx);
+    // snap to 8 directions
+    const step = Math.PI / 4;
+    angle = Math.round(angle / step) * step;
+    return angle;
+  }
+
+
+  function isScreenPointVisible(x, y, margin = 18) {
+    return x >= margin && x <= state.width - margin && y >= margin && y <= state.height - margin;
+  }
+
+  function nearestBoundaryAngleForScreenPoint(screenX, screenY) {
+    const dTop = Math.abs(screenY);
+    const dBottom = Math.abs(state.height - screenY);
+    const dLeft = Math.abs(screenX);
+    const dRight = Math.abs(state.width - screenX);
+    const minD = Math.min(dTop, dBottom, dLeft, dRight);
+
+    if (minD === dTop) return -Math.PI / 2;
+    if (minD === dBottom) return Math.PI / 2;
+    if (minD === dLeft) return Math.PI;
+    return 0;
+  }
+
+
+  
+
+  
+  function getSystemLabelState(renderedRadius, zoom) {
+    // Two-band system with an explicit handoff:
+    // upper band stays just OUTSIDE the top boundary,
+    // lower band stays just INSIDE the top boundary.
+    const r = Math.max(18, renderedRadius);
+
+    const outsideGap = Math.max(8, Math.min(18, r * 0.10));
+    const insideGap = Math.max(10, Math.min(20, r * 0.14));
+
+    // Both bands are anchored to the TOP boundary, never the bottom of the system.
+    const topFar = -(r + outsideGap + 8);
+    const topNear = -(r + outsideGap);
+    const innerFar = -(r - insideGap - 8);
+    const innerNear = -(r - insideGap);
+
+    const tLinear = Math.max(0, Math.min(1, (zoom - 0.9) / 0.7));
+    const t = tLinear * tLinear * (3 - 2 * tLinear);
+
+    let topOffset = topFar * (1 - t) + topNear * t;
+    topOffset = Math.max(topFar, Math.min(topNear, topOffset));
+
+    let bottomOffset = innerFar * (1 - t) + innerNear * t;
+    bottomOffset = Math.max(innerFar, Math.min(innerNear, bottomOffset));
+
+    // Crossfade between bands instead of showing both strongly at once.
+    const topAlpha = 1 - Math.max(0, Math.min(1, (t - 0.72) / 0.18));
+    const bottomAlpha = Math.max(0, Math.min(1, (t - 0.78) / 0.14));
+
+    return {
+      topOffset,
+      bottomOffset,
+      topAlpha,
+      bottomAlpha
+    };
+  }
+
+function drawLabel(node, alpha) {
+    if (!node) return;
+    const p = worldToScreen(node.x, node.y);
+    const r = node.radius * state.camera.scale;
+    const displayText = node.type === 'need' ? needDisplayName(node) : nodeDisplayText(node);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = COLORS.text;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    if (node.type === 'world') {
+      ctx.font = '700 18px Inter, sans-serif';
+      ctx.fillText(displayText, p.x, p.y - r - 18);
+      ctx.restore();
+      return;
+    }
+
+    if (node.type === 'system') {
+      const s = getSystemLabelState(r, state.camera.scale);
+
+      if (s.topAlpha > 0.01) {
+        ctx.globalAlpha = alpha * s.topAlpha;
+        ctx.font = '600 13px Inter, sans-serif';
+        ctx.fillText(displayText, p.x, p.y + s.topOffset);
+      }
+
+      if (s.bottomAlpha > 0.01) {
+        ctx.globalAlpha = alpha * 0.92 * s.bottomAlpha;
+        ctx.font = '600 12px Inter, sans-serif';
+        ctx.fillText(displayText, p.x, p.y + s.bottomOffset);
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    if (node.type === 'role') {
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.fillText(displayText, p.x, p.y - r - 12);
+      ctx.restore();
+      return;
+    }
+
+    if (node.type === 'goal' || node.type === 'need') {
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.fillText(displayText, p.x, p.y);
+      ctx.restore();
+      return;
+    }
+
+    ctx.font = '600 12px Inter, sans-serif';
+    ctx.fillText(displayText, p.x, p.y - r - 12);
+    ctx.restore();
+  }
+
+  function drawFlowLine(a, b, color, phase) {
+    const p1 = worldToScreen(a.x, a.y);
+    const p2 = worldToScreen(b.x, b.y);
+    const alpha = Math.min(visibleAlpha(a), visibleAlpha(b)) * 0.9;
+    if (alpha <= 0.04) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, 2.5 * state.camera.scale * 0.35);
+    ctx.setLineDash([6, 10]);
+    ctx.lineDashOffset = -phase;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const t = (Math.sin(phase * 0.03) + 1) * 0.5;
+    const ex = lerp(p1.x, p2.x, t), ey = lerp(p1.y, p2.y, t);
+    const grad = ctx.createRadialGradient(ex, ey, 0, ex, ey, 9);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, color.replace(/[\d.]+\)$/, '0)'));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const arrow = 8;
+    const bx = p2.x - Math.cos(ang) * (b.radius * state.camera.scale + 2);
+    const by = p2.y - Math.sin(ang) * (b.radius * state.camera.scale + 2);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx - Math.cos(ang - 0.45) * arrow, by - Math.sin(ang - 0.45) * arrow);
+    ctx.lineTo(bx - Math.cos(ang + 0.45) * arrow, by - Math.sin(ang + 0.45) * arrow);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawFlows() {
+    // Intra-system flow hidden for now; we'll reintroduce it later.
+  }
+
+
+  function getRoleNodeForChild(node) {
+    let current = node;
+    while (current && current.parentId) {
+      const parent = state.nodeMap.get(current.parentId);
+      if (parent && parent.type === 'role') return parent;
+      current = parent;
+    }
+    return null;
+  }
+
+  function getRoleLevelFlowPairs() {
+    const pairs = getGoalNeedPairs();
+    const grouped = new Map();
+
+    pairs.forEach(pair => {
+      const sourceRole = getRoleNodeForChild(pair.source);
+      const targetRole = getRoleNodeForChild(pair.target);
+      if (!sourceRole || !targetRole) return;
+      const key = `${sourceRole.id}__${targetRole.id}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          source: sourceRole,
+          target: targetRole,
+          count: 0,
+          color: 'rgba(212,175,55,0.92)',
+          alpha: 0.05
+        });
+      }
+      const g = grouped.get(key);
+      g.count += 1;
+      g.alpha = Math.max(g.alpha, pair.alpha ?? 1);
+    });
+
+    return Array.from(grouped.values());
+  }
+
+  function getSystemNodeForChild(node) {
+    let current = node;
+    while (current && current.parentId) {
+      const parent = state.nodeMap.get(current.parentId);
+      if (parent && parent.type === 'system') return parent;
+      current = parent;
+    }
+    return null;
+  }
+
+  function getSystemLevelFlowPairs() {
+    const pairs = getGoalNeedPairs();
+    const grouped = new Map();
+
+    pairs.forEach(pair => {
+      const sourceSystem = getSystemNodeForChild(pair.source);
+      const targetSystem = getSystemNodeForChild(pair.target);
+      if (!sourceSystem || !targetSystem) return;
+      const key = `${sourceSystem.id}__${targetSystem.id}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          source: sourceSystem,
+          target: targetSystem,
+          count: 0,
+          color: 'rgba(212,175,55,0.94)',
+          alpha: 0.05
+        });
+      }
+      const g = grouped.get(key);
+      g.count += 1;
+      g.alpha = Math.max(g.alpha, pair.alpha ?? 1);
+    });
+
+    return Array.from(grouped.values());
+  }
+
+  function getFlowBlend() {
+    // Three overlapping scales:
+    // detail > role > system with deliberate overlap so there is never a dead gap.
+    const s = state.camera.scale;
+
+    const detailAlpha = smoothstep(0.30, 0.48, s);
+    const roleFadeIn = smoothstep(0.22, 0.40, s);
+    const roleFadeOut = 1 - smoothstep(0.34, 0.56, s);
+    const roleAlpha = Math.min(roleFadeIn, roleFadeOut);
+
+    const systemAlpha = 1 - smoothstep(0.20, 0.34, s);
+
+    return {
+      detailAlpha,
+      roleAlpha,
+      systemAlpha
+    };
+  }
+
+  function getFlowRenderMode() {
+    const { detailAlpha, roleAlpha, systemAlpha } = getFlowBlend();
+    if (detailAlpha > 0.92 && roleAlpha < 0.08) return 'detail';
+    if (systemAlpha > 0.92 && roleAlpha < 0.08) return 'system';
+    return 'blend';
+  }
+
+
+  function getWorldFacingSystemPort(systemNode) {
+    // Single convergence port: boundary point on the line from system center to world center.
+    const world = state.nodeMap.get(state.rootId);
+    const wp = worldToScreen(world.x, world.y);
+    const sp = worldToScreen(systemNode.x, systemNode.y);
+    const rr = systemNode.radius * state.camera.scale;
+
+    const toWorldAngle = Math.atan2(wp.y - sp.y, wp.x - sp.x);
+
+    const boundary = {
+      x: sp.x + Math.cos(toWorldAngle) * (rr + 2),
+      y: sp.y + Math.sin(toWorldAngle) * (rr + 2)
+    };
+
+    // Port is imaginary and sits exactly on the boundary.
+    const port = {
+      x: boundary.x,
+      y: boundary.y
+    };
+
+    return {
+      center: sp,
+      worldCenter: wp,
+      toWorldAngle,
+      boundary,
+      port
+    };
+  }
+
+  function drawSystemHighway(pair, phase, alphaMultiplier = 1.0, index = 0) {
+    const sourcePort = getWorldFacingSystemPort(pair.source);
+    const targetPort = getWorldFacingSystemPort(pair.target);
+
+    const traceBoost = isTracing() ? 1 : Math.min(visibleAlpha(pair.source), visibleAlpha(pair.target));
+    const alpha = traceBoost * 0.96 * alphaMultiplier;
+    if (alpha <= 0.04) return;
+
+    const color = pair.color;
+
+    // Highway starts and ends exactly on the world-facing boundary point.
+    const p1 = sourcePort.port;
+    const p2 = targetPort.port;
+
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const d = Math.hypot(dx, dy) || 1;
+
+    // Special case: if the systems are roughly opposite each other around the World,
+    // keep the trunk straight. This avoids the top-to-bottom jitter case.
+    let angleDelta = Math.abs(sourcePort.toWorldAngle - targetPort.toWorldAngle);
+    if (angleDelta > Math.PI) angleDelta = (Math.PI * 2) - angleDelta;
+    const isOppositeWorldSide = Math.abs(angleDelta - Math.PI) < 0.28;
+
+    // Otherwise bow the arc so its apex points gently toward the world center.
+    const worldCenterX = (sourcePort.worldCenter.x + targetPort.worldCenter.x) * 0.5;
+    const worldCenterY = (sourcePort.worldCenter.y + targetPort.worldCenter.y) * 0.5;
+
+    let inwardX = worldCenterX - mx;
+    let inwardY = worldCenterY - my;
+    let inwardLen = Math.hypot(inwardX, inwardY) || 1;
+    inwardX /= inwardLen;
+    inwardY /= inwardLen;
+
+    const bend = isOppositeWorldSide ? 0 : Math.min(70, d * 0.18);
+    const cx = mx + inwardX * bend;
+    const cy = my + inwardY * bend;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Keep macro highways elegant and slim.
+    const highwayWidth = Math.max(2.0, 3.2 * state.camera.scale * 0.24);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = highwayWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Main highway between convergence points
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.quadraticCurveTo(cx, cy, p2.x, p2.y);
+    ctx.stroke();
+
+    // Elegant comet on trunk, fixed size
+    const cycle = phase % 1;
+    const t = cycle;
+
+    const bx = (1 - t) * (1 - t) * p1.x + 2 * (1 - t) * t * cx + t * t * p2.x;
+    const by = (1 - t) * (1 - t) * p1.y + 2 * (1 - t) * t * cy + t * t * p2.y;
+
+    const tangentX = 2 * (1 - t) * (cx - p1.x) + 2 * t * (p2.x - cx);
+    const tangentY = 2 * (1 - t) * (cy - p1.y) + 2 * t * (p2.y - cy);
+    const bundleAng = Math.atan2(tangentY, tangentX);
+
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(bundleAng);
+
+    const frontRadius = 7.6;
+    const tailLength = 14;
+    const tailRadius = 3.5;
+
+    const cometGrad = ctx.createLinearGradient(-tailLength, 0, frontRadius, 0);
+    cometGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    cometGrad.addColorStop(0.25, color);
+    cometGrad.addColorStop(1, color);
+
+    let arrivalFade = 1 - Math.max(0, (t - 0.90) / 0.10);
+    ctx.globalAlpha *= arrivalFade;
+    ctx.fillStyle = cometGrad;
+    ctx.beginPath();
+    ctx.moveTo(frontRadius, 0);
+    ctx.quadraticCurveTo(frontRadius - 2, -frontRadius, -tailLength * 0.35, -tailRadius);
+    ctx.quadraticCurveTo(-tailLength, 0, -tailLength * 0.35, tailRadius);
+    ctx.quadraticCurveTo(frontRadius - 2, frontRadius, frontRadius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Internal directional arrow
+    const innerArrowLen = 6.0;
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(4.5, 0);
+    ctx.lineTo(4.5 - Math.cos(0.5) * innerArrowLen, -Math.sin(0.5) * innerArrowLen);
+    ctx.moveTo(4.5, 0);
+    ctx.lineTo(4.5 - Math.cos(0.5) * innerArrowLen, Math.sin(0.5) * innerArrowLen);
+    ctx.stroke();
+    ctx.restore();
+
+    // Count label near comet
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = `600 10px Inter, sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(pair.count), bx + 8, by - 8);
+
+    ctx.restore();
+  }
+
+function drawCrossSystemFlows() {
+    const mode = getFlowRenderMode();
+    const { detailAlpha, roleAlpha, systemAlpha } = getFlowBlend();
+
+    if (isTracing()) {
+      // On the Story Stage, keep ROLE connections visible at all zoom levels.
+      // Detail connections still appear when zoomed in enough, but role connections
+      // remain on throughout so the supporting cast structure is always readable.
+      const detailPairs = getGoalNeedPairs();
+      const rolePairs = getRoleLevelFlowPairs();
+
+      // Role connections: always ON during trace
+      rolePairs.forEach((pair, i) => {
+        drawCurvedFlow(
+          pair.source,
+          pair.target,
+          pair.color,
+          state.t * 0.22 + i * 0.22,
+          0.18,
+          i % 2 === 0 ? -1 : 1,
+          Math.max(1.35, pair.count * 0.95),
+          getTraceAlphaForPair(pair)
+        );
+      });
+
+      // Detail connections: layer in when zoomed closer, but never replace role view
+      const detailStrength = mode === 'detail' ? 1.0 : 0.45;
+      detailPairs.forEach((pair, i) => {
+        drawCurvedFlow(
+          pair.source,
+          pair.target,
+          pair.color,
+          state.t * 0.42 + i * 0.35,
+          0.24,
+          i % 2 === 0 ? -1 : 1,
+          1.0,
+          getTraceAlphaForPair(pair) * detailStrength
+        );
+      });
+
+      return;
+    }
+
+    if (mode === 'detail') {
+      const detailPairs = getGoalNeedPairs();
+      detailPairs.forEach((pair, i) => {
+        drawCurvedFlow(pair.source, pair.target, pair.color, state.t * 0.42 + i * 0.35, 0.24, i % 2 === 0 ? -1 : 1, 1.0, getTraceAlphaForPair(pair));
+      });
+      return;
+    }
+
+    if (mode === 'system') {
+      const systemPairs = getSystemLevelFlowPairs();
+      systemPairs.forEach((pair, i) => {
+        drawSystemHighway(pair, state.t * 0.15 + i * 0.18, getTraceAlphaForPair(pair), i);
+      });
+      return;
+    }
+
+    const detailPairs = getGoalNeedPairs();
+    detailPairs.forEach((pair, i) => {
+      drawCurvedFlow(
+        pair.source,
+        pair.target,
+        pair.color,
+        state.t * 0.42 + i * 0.35,
+        0.24,
+        i % 2 === 0 ? -1 : 1,
+        1.0,
+        getTraceAlphaForPair(pair) * detailAlpha
+      );
+    });
+
+    const rolePairs = getRoleLevelFlowPairs();
+    rolePairs.forEach((pair, i) => {
+      drawCurvedFlow(
+        pair.source,
+        pair.target,
+        pair.color,
+        state.t * 0.22 + i * 0.22,
+        0.18,
+        i % 2 === 0 ? -1 : 1,
+        Math.max(1.35, pair.count * 0.9),
+        getTraceAlphaForPair(pair) * roleAlpha
+      );
+    });
+
+    const systemPairs = getSystemLevelFlowPairs();
+    systemPairs.forEach((pair, i) => {
+      drawSystemHighway(pair, state.t * 0.15 + i * 0.18, getTraceAlphaForPair(pair) * systemAlpha, i);
+    });
+  }
+
+  function drawCurvedFlow(a, b, color, phase, bendFactor = 0.18, signHint = 1, widthMultiplier = 1.0, alphaMultiplier = 1.0, countLabel = null) {
+    const p1 = worldToScreen(a.x, a.y);
+    const p2 = worldToScreen(b.x, b.y);
+    const alpha = Math.min(visibleAlpha(a), visibleAlpha(b)) * 0.96 * alphaMultiplier;
+    if (alpha <= 0.04) return;
+
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const nx = -dy / d;
+    const ny = dx / d;
+    const bend = Math.min(160, d * bendFactor);
+    const cx = mx + nx * bend * signHint;
+    const cy = my + ny * bend * signHint;
+
+    const scale = state.camera.scale;
+
+    let sx = cx - p1.x;
+    let sy = cy - p1.y;
+    let sl = Math.hypot(sx, sy) || 1;
+    sx /= sl; sy /= sl;
+
+    let exd = p2.x - cx;
+    let eyd = p2.y - cy;
+    let el = Math.hypot(exd, eyd) || 1;
+    exd /= el; eyd /= el;
+
+    const startOffset = (a.radius * scale) + 3;
+    const endOffset = (b.radius * scale) + 3;
+
+    const p1o = { x: p1.x + sx * startOffset, y: p1.y + sy * startOffset };
+    const p2o = { x: p2.x - exd * endOffset, y: p2.y - eyd * endOffset };
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // highway / line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.15, 2.4 * scale * 0.30 * widthMultiplier);
+    ctx.beginPath();
+    ctx.moveTo(p1o.x, p1o.y);
+    ctx.quadraticCurveTo(cx, cy, p2o.x, p2o.y);
+    ctx.stroke();
+
+    // one-way comet bundle from source to destination
+    const cycle = phase % 1;
+    const t = cycle;
+    const bx = (1 - t) * (1 - t) * p1o.x + 2 * (1 - t) * t * cx + t * t * p2o.x;
+    const by = (1 - t) * (1 - t) * p1o.y + 2 * (1 - t) * t * cy + t * t * p2o.y;
+
+    const tangentX = 2 * (1 - t) * (cx - p1o.x) + 2 * t * (p2o.x - cx);
+    const tangentY = 2 * (1 - t) * (cy - p1o.y) + 2 * t * (p2o.y - cy);
+    const bundleAng = Math.atan2(tangentY, tangentX);
+
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(bundleAng);
+
+    const frontRadius = 8.0;
+    const tailLength = 15;
+    const tailRadius = 3.8;
+
+    const cometGrad = ctx.createLinearGradient(-tailLength, 0, frontRadius, 0);
+    cometGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    cometGrad.addColorStop(0.25, color);
+    cometGrad.addColorStop(1, color);
+
+    ctx.fillStyle = cometGrad;
+    ctx.beginPath();
+    ctx.moveTo(frontRadius, 0);
+    ctx.quadraticCurveTo(frontRadius - 2, -frontRadius, -tailLength * 0.35, -tailRadius);
+    ctx.quadraticCurveTo(-tailLength, 0, -tailLength * 0.35, tailRadius);
+    ctx.quadraticCurveTo(frontRadius - 2, frontRadius, frontRadius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    const innerArrowLen = 6.4;
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(4.5, 0);
+    ctx.lineTo(4.5 - Math.cos(0.5) * innerArrowLen, -Math.sin(0.5) * innerArrowLen);
+    ctx.moveTo(4.5, 0);
+    ctx.lineTo(4.5 - Math.cos(0.5) * innerArrowLen, Math.sin(0.5) * innerArrowLen);
+    ctx.stroke();
+
+    ctx.restore();
+
+    if (countLabel !== null && widthMultiplier > 1.2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.font = `600 10px Inter, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(countLabel), bx + 8, by - 8);
+    }
+
+    ctx.restore();
+  }
+
+
+  function getNeedStateSets() {
+    const satisfiedNeeds = new Set();
+    const servingGoals = new Set();
+
+    const pairs = getGoalNeedPairs();
+    pairs.forEach(pair => {
+      servingGoals.add(pair.source.id);
+      satisfiedNeeds.add(pair.target.id);
+    });
+
+    return { servingGoals, satisfiedNeeds };
+  }
+
+  function getWorldScore() {
+    const { servingGoals, satisfiedNeeds } = getNeedStateSets();
+    const goals = state.nodes.filter(n => n.type === 'goal');
+    const needs = state.nodes.filter(n => n.type === 'need');
+    const happyGoals = goals.filter(g => servingGoals.has(g.id)).length;
+    const happyNeeds = needs.filter(n => satisfiedNeeds.has(n.id)).length;
+    return {
+      happyGoals,
+      totalGoals: goals.length,
+      happyNeeds,
+      totalNeeds: needs.length
+    };
+  }
+
+  const PRIMARY_CARE_SYSTEM_NAMES = [
+    'air', 'water', 'food', 'land', 'energy', 'plant', 'animal', 'seed', 'cloth',
+    'home', 'clean', 'guard', 'health', 'design', 'signal', 'technology', 'transport',
+    'space', 'academy', 'wisdom', 'law', 'art', 'fun', 'community', 'challenge',
+    'history', 'love'
+  ];
+
+  const PRIMARY_CARE_NEED_NAMES = [...PRIMARY_CARE_SYSTEM_NAMES];
+
+  function makePrimaryCareAssignments(mode) {
+    const assignedNames = mode === 'happy'
+      ? PRIMARY_CARE_NEED_NAMES
+      : PRIMARY_CARE_NEED_NAMES.filter((name, idx) => ((idx * 11 + 5) % 27) < 16);
+
+    return assignedNames.map(name => [
+      `${name}.steward.sustain`,
+      [name]
+    ]);
+  }
+
+  function makePrimaryCareTemplate(name, mode) {
+    return {
+      name,
+      worldLabel: 'Earth',
+      assignmentTarget: 'all-matching-needs',
+      systems: PRIMARY_CARE_SYSTEM_NAMES.map((systemName, sIdx) => {
+        return {
+          key: systemName,
+          name: systemName,
+          description: `Primary care system for ${systemName}.`,
+          roles: [
+            {
+              key: 'steward',
+              name: `${systemName} steward`,
+              description: `Maintains ${systemName} for the whole Earth system.`,
+              goal: {
+                key: 'sustain',
+                name: systemName,
+                description: `Keep ${systemName} healthy, available, and coordinated.`
+              },
+              needs: PRIMARY_CARE_NEED_NAMES.map((needName) => [
+                needName,
+                `${needName} support required by ${systemName}.`
+              ])
+            }
+          ]
+        };
+      }),
+      assignments: {
+        training: makePrimaryCareAssignments(mode),
+        proficient: makePrimaryCareAssignments(mode)
+      }
+    };
+  }
+
+  const TEMPLATES = {
+    '27-primary-care-systems-sad': makePrimaryCareTemplate('27 primary care systems-sad', 'sad'),
+    '27-primary-care-systems-happy': makePrimaryCareTemplate('27 primary care systems-happy', 'happy'),
+    'human-baby': {
+      name: 'Human Baby – Thrive Ecosystem',
+      worldLabel: 'World',
+      systems: [
+        {
+          key: 'human',
+          name: 'Human',
+          description: 'A newborn human system whose primary role is Baby.',
+          roles: [
+            {
+              key: 'baby',
+              name: 'Baby',
+              description: 'Primary dependent newborn role.',
+              goal: { key: 'thrive', name: 'Thrive', description: 'Grow, survive, bond, and develop safely.' },
+              needs: [
+                ['Air','Breathable air and safe oxygen environment.'],
+                ['Water','Clean hydration essential for survival.'],
+                ['Food','Nourishment for growth and energy.'],
+                ['Warmth','Thermal comfort and body temperature stability.'],
+                ['Rest','Sleep, recovery, and calm regulation.'],
+                ['Home','A secure place to live and recover.'],
+                ['Guard','Protection from danger and harm.'],
+                ['Hygiene','Cleanliness to prevent discomfort and disease.'],
+                ['Medical','Health care, treatment, and prevention.'],
+                ['Love','Consistent emotional care and attachment.'],
+                ['Touch','Physical contact and comforting closeness.'],
+                ['Stimulation','Sensory, cognitive, and developmental input.'],
+                ['Fun','Playful engagement and joyful interaction.']
+              ]
+            }
+          ]
+        },
+        {
+          key: 'care',
+          name: 'Care',
+          description: 'Primary human care system around the baby.',
+          roles: [
+            {
+              key: 'parent',
+              name: 'Parent',
+              description: 'Primary caregiver providing daily care and attachment.',
+              goal: { key: 'nurture', name: 'Nurture', description: 'Provide emotional, physical, and developmental care.' },
+              needs: [['Rest','Recovery to sustain caregiving.'],['Food','Nutrition to maintain energy.'],['Water','Hydration for sustained care.'],['Health','Baseline wellbeing for caregiving.'],['Time','Available time to care.'],['Stability','Predictable support and continuity.']]
+            },
+            {
+              key: 'protector',
+              name: 'Protector',
+              description: 'Maintains safety and physical security.',
+              goal: { key: 'protect', name: 'Protect', description: 'Keep the baby safe from harm.' },
+              needs: [['Awareness','Awareness of risks and changes.'],['Energy','Energy to act and respond.'],['Home','Safe shelter and boundaries.']]
+            },
+            {
+              key: 'comforter',
+              name: 'Comforter',
+              description: 'Soothes distress and helps regulation.',
+              goal: { key: 'soothe', name: 'Soothe', description: 'Calm the baby and support emotional regulation.' },
+              needs: [['Presence','Physical availability and closeness.'],['Calm','A regulated emotional state.'],['Time','Time to respond and comfort.']]
+            },
+            {
+              key: 'teacher',
+              name: 'Teacher',
+              description: 'Supports early learning and curiosity.',
+              goal: { key: 'stimulate', name: 'Stimulate', description: 'Offer developmentally appropriate interaction.' },
+              needs: [['Knowledge','Understanding of developmental needs.'],['Time','Time for responsive interaction.'],['Tools','Objects and materials for play and learning.']]
+            }
+          ]
+        },
+        {
+          key: 'nutrition',
+          name: 'Nutrition',
+          description: 'Feeding and nourishment system.',
+          roles: [
+            {
+              key: 'feeder',
+              name: 'Feeder',
+              description: 'Provides regular nourishment and hydration.',
+              goal: { key: 'nourish', name: 'Nourish', description: 'Feed the baby safely and consistently.' },
+              needs: [['Food','Available food or formula.'],['Water','Clean water for hydration and preparation.'],['Hygiene','Clean tools and clean preparation.']]
+            },
+            {
+              key: 'milk',
+              name: 'Milk Source',
+              description: 'Breastfeeding or formula supply role.',
+              goal: { key: 'feed', name: 'Feed', description: 'Provide the baby with milk-based nourishment.' },
+              needs: [['Food','Nutrition input for milk supply.'],['Water','Hydration for milk supply.'],['Rest','Recovery to sustain feeding.']]
+            }
+          ]
+        },
+        {
+          key: 'home',
+          name: 'Home',
+          description: 'Living environment system.',
+          roles: [
+            {
+              key: 'shelter',
+              name: 'Shelter',
+              description: 'Provides protected living space.',
+              goal: { key: 'shelter', name: 'Shelter', description: 'Provide secure, stable housing.' },
+              needs: [['Energy','Power and heating support.'],['Maintenance','Care and upkeep of the environment.']]
+            },
+            {
+              key: 'cleaner',
+              name: 'Cleaner',
+              description: 'Maintains sanitary living conditions.',
+              goal: { key: 'clean', name: 'Clean', description: 'Keep the baby environment clean.' },
+              needs: [['Water','Water for cleaning.'],['Tools','Cleaning materials and equipment.'],['Time','Time for cleaning work.']]
+            },
+            {
+              key: 'climate',
+              name: 'Climate Keeper',
+              description: 'Maintains warmth and comfort.',
+              goal: { key: 'warm', name: 'Warm', description: 'Keep the environment thermally safe and comfortable.' },
+              needs: [['Energy','Power or fuel for climate control.'],['Home','Stable shelter envelope.']]
+            }
+          ]
+        },
+        {
+          key: 'health',
+          name: 'Health',
+          description: 'Health protection and treatment system.',
+          roles: [
+            {
+              key: 'doctor',
+              name: 'Doctor',
+              description: 'Clinical role for diagnosis and treatment.',
+              goal: { key: 'heal', name: 'Heal', description: 'Restore and maintain baby health.' },
+              needs: [['Knowledge','Clinical knowledge and training.'],['Tools','Medical tools and equipment.'],['Medicine','Medicines and treatment resources.']]
+            },
+            {
+              key: 'nurse',
+              name: 'Nurse',
+              description: 'Hands-on care and monitoring role.',
+              goal: { key: 'care', name: 'Care', description: 'Provide ongoing health support and care.' },
+              needs: [['Knowledge','Practical care knowledge.'],['Supplies','Care supplies and materials.'],['Time','Time for attentive care.']]
+            },
+            {
+              key: 'monitor',
+              name: 'Monitor',
+              description: 'Observes signs, symptoms, and changes.',
+              goal: { key: 'detect', name: 'Detect', description: 'Notice problems early and escalate when needed.' },
+              needs: [['Awareness','Observation and vigilance.'],['Knowledge','Understanding of warning signs.']]
+            },
+            {
+              key: 'immunizer',
+              name: 'Immunizer',
+              description: 'Prevention and vaccination role.',
+              goal: { key: 'prevent', name: 'Prevent', description: 'Reduce preventable risks and disease.' },
+              needs: [['Medicine','Vaccines and preventive treatments.'],['Knowledge','Protocols and schedules.'],['Trust','Reliable acceptance and follow-through.']]
+            }
+          ]
+        },
+        {
+          key: 'safety',
+          name: 'Safety',
+          description: 'Protective response and hazard control system.',
+          roles: [
+            {
+              key: 'watcher',
+              name: 'Watcher',
+              description: 'Continuous observation for danger.',
+              goal: { key: 'watch', name: 'Watch', description: 'Observe and notice potential threats.' },
+              needs: [['Awareness','Attention and alertness.'],['Presence','Being physically or virtually present.']]
+            },
+            {
+              key: 'responder',
+              name: 'Responder',
+              description: 'Acts when danger or emergencies occur.',
+              goal: { key: 'respond', name: 'Respond', description: 'Take action quickly when the baby is at risk.' },
+              needs: [['Energy','Capacity to act quickly.'],['Guard','Supportive safety structure.'],['Tools','Response tools and equipment.']]
+            },
+            {
+              key: 'boundary',
+              name: 'Boundary Keeper',
+              description: 'Maintains physical and procedural safeguards.',
+              goal: { key: 'secure', name: 'Secure', description: 'Create and maintain safe boundaries.' },
+              needs: [['Home','Controlled environment.'],['Maintenance','Reliable upkeep of boundaries.']]
+            }
+          ]
+        },
+        {
+          key: 'bonding',
+          name: 'Bonding',
+          description: 'Attachment and emotional development system.',
+          roles: [
+            {
+              key: 'holder',
+              name: 'Holder',
+              description: 'Provides holding and physical affection.',
+              goal: { key: 'bond', name: 'Bond', description: 'Deepen attachment through closeness.' },
+              needs: [['Presence','Availability for close contact.'],['Calm','Regulated emotional state.']]
+            },
+            {
+              key: 'speaker',
+              name: 'Speaker',
+              description: 'Uses voice and expression to connect.',
+              goal: { key: 'connect', name: 'Connect', description: 'Build recognition, trust, and engagement.' },
+              needs: [['Presence','Availability for interaction.'],['Love','Warm intent and emotional openness.']]
+            },
+            {
+              key: 'player',
+              name: 'Player',
+              description: 'Engages the baby in playful interaction.',
+              goal: { key: 'engage', name: 'Engage', description: 'Create joyful playful interaction.' },
+              needs: [['Energy','Energy to play.'],['Time','Time for interaction.'],['Tools','Play objects or sensory materials.']]
+            }
+          ]
+        },
+        {
+          key: 'development',
+          name: 'Development',
+          description: 'Developmental support system.',
+          roles: [
+            {
+              key: 'sensory',
+              name: 'Sensory Guide',
+              description: 'Offers sensory and exploratory input.',
+              goal: { key: 'stimulate', name: 'Stimulate', description: 'Support sensory and cognitive growth.' },
+              needs: [['Tools','Safe objects and stimuli.'],['Knowledge','Age-appropriate guidance.']]
+            },
+            {
+              key: 'movement',
+              name: 'Movement Guide',
+              description: 'Supports healthy motor development.',
+              goal: { key: 'develop', name: 'Develop', description: 'Encourage safe movement and physical development.' },
+              needs: [['Space','Safe room to move.'],['Knowledge','Understanding of developmental stages.']]
+            },
+            {
+              key: 'language',
+              name: 'Language Guide',
+              description: 'Supports early language exposure.',
+              goal: { key: 'teach', name: 'Teach', description: 'Support communication and early language development.' },
+              needs: [['Presence','Direct interaction.'],['Knowledge','Language-rich interaction patterns.']]
+            }
+          ]
+        },
+        {
+          key: 'environment',
+          name: 'Environment',
+          description: 'Natural environment providing life conditions.',
+          roles: [
+            {
+              key: 'atmosphere',
+              name: 'Atmosphere',
+              description: 'Provides breathable air.',
+              goal: { key: 'sustain', name: 'Sustain', description: 'Keep breathable air available.' },
+              needs: [['Stability','Environmental continuity.']]
+            },
+            {
+              key: 'watersource',
+              name: 'Water Source',
+              description: 'Provides clean water.',
+              goal: { key: 'provide', name: 'Provide', description: 'Make clean water available.' },
+              needs: [['Guard','Protection from contamination.']]
+            },
+            {
+              key: 'thermal',
+              name: 'Thermal Environment',
+              description: 'Supports safe thermal conditions.',
+              goal: { key: 'stabilize', name: 'Stabilize', description: 'Keep temperature in a safe range.' },
+              needs: [['Energy','Heat support.'],['Stability','Stable environment.']]
+            }
+          ]
+        },
+        {
+          key: 'energy',
+          name: 'Energy',
+          description: 'Power and utility support system.',
+          roles: [
+            {
+              key: 'power',
+              name: 'Power Provider',
+              description: 'Supplies energy to dependent systems.',
+              goal: { key: 'power', name: 'Power', description: 'Supply usable power and heat.' },
+              needs: [['Resources','Fuel, generation, or utility infrastructure.'],['Maintenance','Operational reliability.']]
+            }
+          ]
+        },
+        {
+          key: 'resource',
+          name: 'Resource',
+          description: 'Resource and material supply system.',
+          roles: [
+            {
+              key: 'supplier',
+              name: 'Supplier',
+              description: 'Provides goods and materials.',
+              goal: { key: 'supply', name: 'Supply', description: 'Provide food, tools, and household materials.' },
+              needs: [['Resources','Access to inventory and goods.'],['Transport','Movement of goods.']]
+            },
+            {
+              key: 'earner',
+              name: 'Earner',
+              description: 'Provides economic support.',
+              goal: { key: 'provide', name: 'Provide', description: 'Generate resources needed for support systems.' },
+              needs: [['Stability','Reliable economic conditions.'],['Energy','Capacity to work.'],['Guard','Basic security.']]
+            }
+          ]
+        },
+        {
+          key: 'knowledge',
+          name: 'Knowledge',
+          description: 'Knowledge and learning support system.',
+          roles: [
+            {
+              key: 'trainer',
+              name: 'Trainer',
+              description: 'Transfers usable care knowledge.',
+              goal: { key: 'teach', name: 'Teach', description: 'Provide practical knowledge to support other systems.' },
+              needs: [['Knowledge','Existing expertise.'],['Tools','Teaching tools and materials.'],['Time','Time to instruct.']]
+            }
+          ]
+        },
+        {
+          key: 'community',
+          name: 'Community',
+          description: 'Social support and continuity system.',
+          roles: [
+            {
+              key: 'supporter',
+              name: 'Supporter',
+              description: 'Offers social and practical support.',
+              goal: { key: 'support', name: 'Support', description: 'Stabilize caregivers and reduce overload.' },
+              needs: [['Presence','Availability to help.'],['Time','Time to provide support.'],['Love','Care and willingness.']]
+            }
+          ]
+        }
+      ],
+      assignments: {
+        training: [
+          ['environment.atmosphere.sustain', ['Air']],
+          ['environment.watersource.provide', ['Water']],
+          ['nutrition.feeder.nourish', ['Food']],
+          ['care.parent.nurture', ['Love']],
+          ['bonding.holder.bond', ['Touch']],
+          ['home.shelter.shelter', ['Home']],
+          ['safety.watcher.watch', ['Guard']],
+          ['rest.sleepsupport.settle', ['Rest']],
+          ['health.doctor.heal', ['Medical']]
+        ],
+        proficient: [
+          ['environment.atmosphere.sustain', ['Air']],
+          ['environment.watersource.provide', ['Water']],
+          ['nutrition.feeder.nourish', ['Food','Water']],
+          ['nutrition.milk.feed', ['Food','Water']],
+          ['home.shelter.shelter', ['Home','Rest','Warmth']],
+          ['home.cleaner.clean', ['Hygiene']],
+          ['health.nurse.care', ['Hygiene']],
+          ['hygiene.washer.wash', ['Hygiene']],
+          ['hygiene.caregiverclean.sanitize', ['Hygiene']],
+          ['home.climate.warm', ['Warmth']],
+          ['health.doctor.heal', ['Medical']],
+          ['health.nurse.care', ['Medical','Hygiene']],
+          ['home.cleaner.clean', ['Hygiene']],
+          ['hygiene.washer.wash', ['Hygiene']],
+          ['hygiene.caregiverclean.sanitize', ['Hygiene']],
+          ['health.monitor.detect', ['Medical','Guard']],
+          ['health.immunizer.prevent', ['Medical','Guard']],
+          ['safety.watcher.watch', ['Guard']],
+          ['safety.responder.respond', ['Guard','Medical']],
+          ['safety.boundary.secure', ['Guard','Home']],
+          ['care.parent.nurture', ['Love','Touch','Rest','Food','Stimulation','Fun']],
+          ['care.protector.protect', ['Guard','Home','Warmth']],
+          ['care.comforter.soothe', ['Love','Touch','Rest','Warmth']],
+          ['care.teacher.stimulate', ['Stimulation','Fun']],
+          ['bonding.holder.bond', ['Love','Touch','Warmth']],
+          ['bonding.speaker.connect', ['Love','Stimulation']],
+          ['bonding.player.engage', ['Fun','Stimulation','Love']],
+          ['development.sensory.stimulate', ['Stimulation','Fun']],
+          ['development.movement.develop', ['Stimulation']],
+          ['development.language.teach', ['Stimulation','Love']],
+
+          ['resource.supplier.supply', ['Food','Water','Tools','Supplies','Resources','Home']],
+          ['resource.earner.provide', ['Resources','Stability']],
+          ['energy.power.power', ['Energy']],
+          ['knowledge.trainer.teach', ['Knowledge','Awareness']],
+          ['community.supporter.support', ['Time','Presence','Love','Calm','Stability']],
+          ['home.cleaner.clean', ['Cleanliness']],
+          ['safety.boundary.secure', ['Maintenance']],
+          ['health.doctor.heal', ['Medicine']],
+          ['health.nurse.care', ['Supplies']],
+          ['development.movement.develop', ['Space']],
+          ['resource.supplier.supply', ['Transport']],
+          ['health.immunizer.prevent', ['Trust']]
+        ]
+      }
+    }
+  };
+
+  function makeTemplateId(prefix, ...parts) {
+    return [prefix, ...parts].join('.');
+  }
+
+  function loadTemplate(templateKey, mode = 'training') {
+    clearFocusState();
+    const tpl = TEMPLATES[templateKey];
+    if (!tpl) return;
+    state.currentTemplateInfo = { name: tpl.name || templateKey || 'Unknown Template', mode };
+
+    clearGraph();
+    const world = createNode({ id: 'W1', label: tpl.worldLabel || 'World', type: 'world', hiddenId: uid('world'), displayName: tpl.worldLabel || 'World', description: 'Root world container.' });
+    world.radius = baseRadius('world');
+    world.x = 0;
+    world.y = 0;
+
+    const goalKeyToId = {};
+
+    tpl.systems.forEach((sys, sIdx) => {
+      const sysId = `S${sIdx + 1}`;
+      const sysNode = createNode({
+        id: sysId,
+        label: sysId,
+        type: 'system',
+        parentId: world.id,
+        hiddenId: uid('system'),
+        displayName: sys.name,
+        description: sys.description,
+        templateKey: sys.key
+      });
+
+      sys.roles.forEach((role, rIdx) => {
+        const roleId = `R${rIdx + 1}.${sysId}`;
+        const roleNode = createNode({
+          id: roleId,
+          label: roleId,
+          type: 'role',
+          parentId: sysNode.id,
+          hiddenId: uid('role'),
+          displayName: role.name,
+          description: role.description,
+          templateKey: `${sys.key}.${role.key}`
+        });
+
+        const goalId = `G.${roleId}`;
+        createNode({
+          id: goalId,
+          label: goalId,
+          type: 'goal',
+          parentId: roleNode.id,
+          hiddenId: uid('goal'),
+          displayName: role.goal.name,
+          description: role.goal.description,
+          templateKey: `${sys.key}.${role.key}.${role.goal.key}`
+        });
+        goalKeyToId[`${sys.key}.${role.key}.${role.goal.key}`] = goalId;
+
+        role.needs.forEach((need, nIdx) => {
+          createNode({
+            id: `N${nIdx + 1}.${roleId}`,
+            label: `N${nIdx + 1}.${roleId}`,
+            type: 'need',
+            parentId: roleNode.id,
+            hiddenId: uid('need'),
+            displayName: need[0],
+            description: need[1],
+            templateKey: `${sys.key}.${role.key}.need.${nIdx + 1}`
+          });
+        });
+      });
+    });
+
+    // Resolve baby need targets to actual world IDs and store assignment by IDs.
+    state.goalNeedNameAssignments = {};
+    state.goalTargetIdsAssignments = {};
+    state.storyStageT = 0;
+
+    const assignmentSpec = tpl.assignments ? tpl.assignments[mode] : null;
+
+    const needIdsByName = {};
+    state.nodes.forEach(node => {
+      const inTargetScope = tpl.assignmentTarget === 'all-matching-needs' ||
+        (node.parentId && /^R1\.S1$/.test(node.parentId));
+      if (node.type === 'need' && inTargetScope) {
+        const nm = needDisplayName(node);
+        if (!needIdsByName[nm]) needIdsByName[nm] = [];
+        needIdsByName[nm].push(node.id);
+      }
+    });
+
+    (Array.isArray(assignmentSpec) ? assignmentSpec : []).forEach(([goalKey, needNames]) => {
+      const goalId = goalKeyToId[goalKey];
+      if (!goalId) return;
+      const ids = [];
+      (needNames || []).forEach(nm => {
+        (needIdsByName[nm] || []).forEach(id => ids.push(id));
+      });
+      if (ids.length) {
+        state.goalNeedNameAssignments[goalId] = [...needNames];
+        state.goalTargetIdsAssignments[goalId] = [...new Set(ids)];
+      }
+    });
+
+    layoutChildren(world.id);
+    populateReassignOptions();
+    state.selectedId = world.id;
+    centerCamera(true);
+    updateInspector();
+  }
+
+  function isRoleHappy(roleNode, satisfiedNeeds) {
+    const children = roleNode.children.map(id => state.nodeMap.get(id));
+    const roleNeeds = children.filter(c => c.type === 'need');
+    return roleNeeds.length > 0 && roleNeeds.every(n => satisfiedNeeds.has(n.id));
+  }
+
+  function isSystemHappy(systemNode, satisfiedNeeds) {
+    const roleChildren = systemNode.children.map(id => state.nodeMap.get(id)).filter(c => c.type === 'role');
+    return roleChildren.length > 0 && roleChildren.every(role => isRoleHappy(role, satisfiedNeeds));
+  }
+
+  function getStageScreenCenter() {
+    const world = state.nodeMap.get(state.rootId);
+    return worldToScreen(world.x, world.y);
+  }
+
+  function getStageSystemVisual(node, x, y, r) {
+    return {
+      id: node.id,
+      type: 'system',
+      x, y, radius: r,
+      displayName: nodeDisplayText(node)
+    };
+  }
+
+
+
+  function getTraceStoryContext() {
+    if (!isTracing()) return null;
+    const traceNode = getTraceNode();
+    if (!traceNode) return null;
+
+    const heroSystem = traceNode.type === 'system' ? traceNode : getSystemNodeForChild(traceNode);
+    const heroRole = traceNode.type === 'role'
+      ? traceNode
+      : ((traceNode.type === 'goal' || traceNode.type === 'need') ? getRoleNodeForChild(traceNode) : null);
+
+    if (!heroSystem) return null;
+
+    const relatedPairs = getGoalNeedPairs().filter(pair => pairTouchesTraceNode(pair, traceNode));
+    const relatedSystemIds = new Set([heroSystem.id]);
+    const relatedRoleIds = new Set();
+
+    relatedPairs.forEach(pair => {
+      const ss = getSystemNodeForChild(pair.source);
+      const ts = getSystemNodeForChild(pair.target);
+      const sr = getRoleNodeForChild(pair.source);
+      const tr = getRoleNodeForChild(pair.target);
+      if (ss) relatedSystemIds.add(ss.id);
+      if (ts) relatedSystemIds.add(ts.id);
+      if (sr) relatedRoleIds.add(sr.id);
+      if (tr) relatedRoleIds.add(tr.id);
+    });
+
+    if (heroRole) relatedRoleIds.add(heroRole.id);
+
+    const audienceSystemIds = new Set();
+    state.nodes.forEach(node => {
+      if (node.type === 'system' && !relatedSystemIds.has(node.id)) audienceSystemIds.add(node.id);
+    });
+
+    return {
+      traceNode,
+      heroSystem,
+      heroRole,
+      relatedPairs,
+      relatedSystemIds,
+      relatedRoleIds,
+      audienceSystemIds
+    };
+  }
+
+  function getStoryWorldLayout() {
+    const ctxStory = getTraceStoryContext();
+    if (!ctxStory) return null;
+
+    const world = state.nodeMap.get(state.rootId);
+    const centerX = world.x;
+    const centerY = world.y;
+
+    const supportSystems = Array.from(ctxStory.relatedSystemIds)
+      .filter(id => id !== ctxStory.heroSystem.id)
+      .map(id => state.nodeMap.get(id))
+      .filter(Boolean)
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    const heroR = ctxStory.heroSystem.radius;
+    const supportReqs = supportSystems.map(s => s.requiredRadius || s.radius);
+    const supportMaxR = supportReqs.length ? Math.max(...supportReqs) : 0;
+    const count = supportSystems.length;
+    const gap = 18;
+    const pad = 54;
+
+    let supportOrbit = 0;
+    if (count === 1) {
+      supportOrbit = heroR + supportReqs[0] + gap + 26;
+    } else if (count === 2) {
+      supportOrbit = Math.max(heroR + supportMaxR + gap + 26, supportMaxR + gap * 0.5);
+    } else if (count > 2) {
+      const ringOrbit = ((2 * supportMaxR) + gap) / (2 * Math.sin(Math.PI / count));
+      supportOrbit = Math.max(heroR + supportMaxR + gap + 26, ringOrbit);
+    }
+
+    const stageRadius = count > 0
+      ? Math.min(world.radius * 0.94, supportOrbit + supportMaxR + pad)
+      : Math.min(world.radius * 0.94, heroR + pad);
+
+    const systemTargets = new Map();
+    systemTargets.set(ctxStory.heroSystem.id, { x: centerX, y: centerY, isHero: true });
+
+    if (supportSystems.length) {
+      const step = (Math.PI * 2) / supportSystems.length;
+      supportSystems.forEach((sys, i) => {
+        const ang = -Math.PI / 2 + i * step;
+        systemTargets.set(sys.id, {
+          x: centerX + Math.cos(ang) * supportOrbit,
+          y: centerY + Math.sin(ang) * supportOrbit,
+          isHero: false
+        });
+      });
+    }
+
+    return {
+      ...ctxStory,
+      centerX,
+      centerY,
+      heroR,
+      supportMaxR,
+      stageRadius,
+      supportOrbit,
+      systemTargets
+    };
+  }
+
+  function getStoryTargetForNode(node, story) {
+    if (!story) return null;
+    if (node.type === 'system') {
+      return story.systemTargets.get(node.id) || null;
+    }
+    return null;
+  }
+
+  function drawGlassWorldOverlay(alpha) {
+    const world = state.nodeMap.get(state.rootId);
+    if (!world) return;
+    const p = worldToScreen(world.x, world.y);
+    const rr = world.radius * state.camera.scale;
+
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.22;
+    ctx.filter = 'blur(10px)';
+    const grad = ctx.createRadialGradient(p.x, p.y, rr * 0.12, p.x, p.y, rr * 1.04);
+    grad.addColorStop(0, 'rgba(255,255,255,0.26)');
+    grad.addColorStop(0.55, 'rgba(138,180,255,0.16)');
+    grad.addColorStop(1, 'rgba(255,255,255,0.05)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr * 1.02, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.16;
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr * 1.01, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  
+  function drawStoryStageConnections() {
+    return;
+  }
+
+function drawStoryPlane() {
+    const story = getStoryWorldLayout();
+    if (!story || state.storyStageT <= 0.02) return;
+    const t = state.storyStageT;
+    drawGlassWorldOverlay(t);
+
+    const p = worldToScreen(story.centerX, story.centerY);
+    const rr = story.stageRadius * state.camera.scale;
+    const heroCoreR = story.heroR * state.camera.scale;
+    const orbitR = story.supportOrbit * state.camera.scale;
+    const scale = 0.74 + t * 0.26;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(scale, scale);
+    ctx.translate(-p.x, -p.y);
+    ctx.globalAlpha = Math.min(1, 0.92 + t * 0.08);
+
+    ctx.shadowBlur = 34;
+    ctx.shadowColor = 'rgba(0,0,0,0.34)';
+
+    const stageGrad = ctx.createRadialGradient(p.x, p.y, heroCoreR * 0.45, p.x, p.y, rr);
+    stageGrad.addColorStop(0, 'rgba(255,255,255,0.26)');
+    stageGrad.addColorStop(0.42, 'rgba(17,28,56,0.84)');
+    stageGrad.addColorStop(1, 'rgba(255,255,255,0.06)');
+    ctx.fillStyle = stageGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(heroCoreR + 14, rr * 0.22), 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (story.supportOrbit > 0) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, orbitR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(238,244,255,0.97)';
+    ctx.font = '700 15px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Story Stage', p.x, p.y - rr - 24);
+
+    ctx.restore();
+  }
+
+
+  function getSystemLabelOffset(system, zoom) {
+    // zoom-based interpolation: far = outside, near = inside
+    const t = Math.max(0, Math.min(1, (zoom - 0.4) / 0.8));
+    const outsideOffset = -system.radius - 20;
+    const insideOffset = -system.radius * 0.4;
+    return outsideOffset * (1 - t) + insideOffset * t;
+  }
+
+function draw() {
+    ctx.clearRect(0, 0, state.width, state.height);
+    drawBackground();
+
+    const ordered = [...state.nodes].sort((a, b) => a.depth - b.depth || b.radius - a.radius);
+    const world = state.nodeMap.get(state.rootId);
+    const baseFade = 1 - state.storyStageT * 0.72;
+
+    if (world) drawNode(world, worldBorderAlpha() * baseFade);
+
+    if (state.storyStageT > 0.02) {
+      drawStoryPlane();
+    }
+
+    for (const node of ordered) {
+      if (node.id === state.rootId) continue;
+      const a = visibleAlpha(node) * getNodeTraceAlpha(node) * getStoryRenderAlpha(node, baseFade);
+      if (a > 0.02) drawNode(node, a);
+    }
+
+    if (state.showFlow) {
+  const flowAlpha = isTracing() ? 1 : baseFade;
+  ctx.save();
+  ctx.globalAlpha = flowAlpha;
+  drawFlows();            // role/need level (robust)
+  drawCrossSystemFlows(); // system level (still allowed)
+  ctx.restore();
+}
+
+    for (const node of ordered) {
+      const a = labelAlpha(node) * visibleAlpha(node) * getNodeTraceAlpha(node) * getStoryRenderAlpha(node, baseFade);
+      if (a > 0.03) drawLabel(node, a);
+    }
+
+    // Story plane is drawn behind the moved actors; no duplicate overlay copies.
+
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    state.t += dt;
+    updatePhysics(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  buildGraph('World', 3, 1, 3);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
