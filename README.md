@@ -38,14 +38,12 @@ Reach Paragon level and maintin my position there.
 
 ## Zero Strings Principles
 
-### Level Zero
+- [ ] Zero truth
 - [ ] Zero baggage
 - [ ] Zero cruelty
 - [ ] Zero secrets
 - [ ] Zero money
 - [ ] Zero borders
-
-### Level One
 - [ ] Zero judgement
 - [ ] Zero blame
 - [ ] Zero shame
