@@ -1,11 +1,11 @@
 # Earth Operating System
 
-- Earth is the set.
-- World is the stage.
 - Universe is the Studio. 
+- World is the Stage.
+- Earth is the Set.
 - Moment is the Scene.
-- Life are the Actors.
-- Live History are their Stories.
+- Systems are the Cast and Crew.
+- Live History is their Story.
 
 ## System, Role, Goal, Need
 
@@ -53,6 +53,7 @@ Reach Paragon level and maintin my position there.
 - [ ] Zero punishment
 - [ ] Zero regret
 - [ ] Zero resentment
+- [ ] Zero tolerance
 - [ ] Zero conscious will
 - [ ] Zero ego
 
