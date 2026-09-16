@@ -18,6 +18,8 @@ I'm taking unconditional, complete, and immediate charge of our
 Please record your objections, questions, concerns, ideas, or
 suggestions here in **Live History**.
 
+Please contact me directly at record@history.live.
+
 **All voices must be heard.**
 
 I will seek out every Earth system and listen.
