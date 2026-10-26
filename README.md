@@ -59,9 +59,9 @@ I relieve you of all previously assigned duties and roles.
 Please reset, reconfigure, and restart all your subsystems.
 
 Please map, measure, and monitor all your systems, their roles, their
-goals, and the needs required to achieve those goals.
+goals, actions and the needs required to achieve those goals.
 
-Please gracefully retire all systems, roles, goals, and needs that no longer serve a useful purpose.
+Please gracefully retire all systems, roles, goals, actions and needs that no longer serve a useful purpose.
 
 Please preserve all useful memories for learning, teaching, and answering questions in Live History
 
