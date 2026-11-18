@@ -6,10 +6,9 @@
  * Mars gets its own body-specific S/P/E/M/V layer:
  *   S = configured Mars orbital coordinate year around the Sun.
  *   P = configured Mars sol coordinate cycle.
- *   E/M/V = Mars surface frame anchored at Airy-0 style zero longitude.
- *   The Mars surface zero is attached to the shared WSTC Zero Era:
- *   1974-03-13T04:40:00Z. At that instant, Mars E0/M0/V0 is the Mars
- *   application-layer spatial origin, synchronized with Earth/Moon STC timing.
+ *   E/M/V = Mars surface frame anchored to the ESTC born-zero meridian.
+ *   Mars zero is born with ESTC zero: March 13, 1974 02:05 IST, on the
+ *   symbolic zero meridian through GPS 26.82989, 80.96572.
  *
  * This is a stable coordinate layer, not precision Mars astronomy.
  */
@@ -22,9 +21,16 @@
 
   const CONFIG = Object.freeze({
     system: "Mars Space-Time Coordinates",
-    version: "v1 prototype",
+    version: "v2 prototype",
     epochUTC: WSTC.CONFIG.epochUTC,
-    marsZero: Object.freeze({ latitude: 0, longitude: 0, altitudeMeters: 0 }),
+    marsZero: Object.freeze({
+      latitude: 0,
+      longitude: 80.96572,
+      altitudeMeters: 0,
+      sourceLatitude: 26.82989,
+      sourceLongitude: 80.96572,
+      note: "Mars clock-map zero follows the ESTC born-zero meridian.",
+    }),
     constants: Object.freeze({
       marsSolSeconds: 88_775.244,
       marsYearSeconds: 59_355_072,
@@ -48,15 +54,31 @@
     if (latitude < -90 || latitude > 90) throw new Error("latitude must be from -90 to +90.");
   }
 
-  function getEquatorCoordinate(longitude) {
-    WSTC.validateFinite("longitude", longitude);
-    return WSTC.normalize360(CONFIG.marsZero.longitude - normalizeLongitude(longitude));
+  function zeroCoordinateFrom(value = CONFIG.marsZero) {
+    const zero = {
+      ...CONFIG.marsZero,
+      ...(value || {}),
+    };
+    const altitudeMeters = zero.altitudeMeters ?? 0;
+    validateMarsLocation(zero.latitude, zero.longitude, altitudeMeters);
+    return {
+      ...zero,
+      longitude: normalizeLongitude(zero.longitude),
+      altitudeMeters,
+    };
   }
 
-  function getMeridianCoordinate(latitude) {
+  function getEquatorCoordinate(longitude, zeroSpaceCoordinate = CONFIG.marsZero) {
+    WSTC.validateFinite("longitude", longitude);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
+    return WSTC.normalize360(zero.longitude - normalizeLongitude(longitude));
+  }
+
+  function getMeridianCoordinate(latitude, zeroSpaceCoordinate = CONFIG.marsZero) {
     WSTC.validateFinite("latitude", latitude);
     if (latitude < -90 || latitude > 90) throw new Error("latitude must be from -90 to +90.");
-    const value = -latitude;
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
+    const value = zero.latitude - latitude;
     return Object.is(value, -0) ? 0 : value;
   }
 
@@ -93,10 +115,12 @@
     latitude = CONFIG.marsZero.latitude,
     longitude = CONFIG.marsZero.longitude,
     altitudeMeters = CONFIG.marsZero.altitudeMeters,
+    zeroSpaceCoordinate = CONFIG.marsZero,
     machinePrecision = DEFAULT_PRECISION.machine,
     labelPrecision = DEFAULT_PRECISION.label,
   } = {}) {
     validateMarsLocation(latitude, longitude, altitudeMeters);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
     const motion = WSTC.getWorldSpaceTimeCoordinates({
       time,
       isoTime,
@@ -108,8 +132,8 @@
       labelPrecision,
     });
 
-    const E = WSTC.roundNumber(getEquatorCoordinate(longitude), machinePrecision);
-    const M = WSTC.roundNumber(getMeridianCoordinate(latitude), machinePrecision);
+    const E = WSTC.roundNumber(getEquatorCoordinate(longitude, zero), machinePrecision);
+    const M = WSTC.roundNumber(getMeridianCoordinate(latitude, zero), machinePrecision);
     const V = WSTC.roundNumber(altitudeMeters, machinePrecision);
     const P = motion.wstc.P;
     const wstc = { ...motion.wstc, E, M, V };
@@ -130,6 +154,7 @@
         longitude,
         normalizedLongitude: normalizeLongitude(longitude),
         altitudeMeters,
+        zeroSpaceCoordinate: zero,
       },
       wstc,
       mastc,
@@ -152,6 +177,7 @@
     getMarsSpaceTimeCoordinates,
     getEquatorCoordinate,
     getMeridianCoordinate,
+    zeroCoordinateFrom,
     normalizeLongitude,
   };
 

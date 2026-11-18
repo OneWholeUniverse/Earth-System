@@ -91,7 +91,7 @@
 
     <div class="field">
       <label for="worldLabel">World label</label>
-      <input id="worldLabel" value="World" />
+      <input id="worldLabel" value="Earth" />
     </div>
 
     <div class="row">
@@ -361,7 +361,8 @@
 
   function labelAlpha(node) {
     const s = state.camera.scale;
-    if (node.type === 'world' || node.type === 'system') return smoothstep(0.12, 0.24, s);
+    if (node.type === 'world') return 1;
+    if (node.type === 'system') return smoothstep(0.12, 0.24, s);
     if (node.type === 'role') return smoothstep(0.46, 0.80, s);
     return smoothstep(0.95, 1.4, s);
   }
@@ -649,7 +650,7 @@
 function buildGraph(worldLabel, systemCount, maxRoles, maxNeeds) {
     clearFocusState();
     clearGraph();
-    const world = createNode({ id: 'W1', label: worldLabel || 'World', type: 'world', hiddenId: uid('world') });
+    const world = createNode({ id: 'W1', label: worldLabel || 'Earth', type: 'world', hiddenId: uid('world') });
     world.radius = baseRadius('world');
     world.x = 0; world.y = 0;
 
@@ -1545,7 +1546,7 @@ function getNodeTraceAlpha(node) {
   }
 
   document.getElementById('generateBtn').addEventListener('click', () => {
-    const worldLabel = (document.getElementById('worldLabel').value || 'World').trim() || 'World';
+    const worldLabel = (document.getElementById('worldLabel').value || 'Earth').trim() || 'Earth';
     const systems = clamp(parseInt(document.getElementById('systemsInput').value || '1', 10), 1, 200);
     const roles = clamp(parseInt(document.getElementById('rolesInput').value || '1', 10), 1, 20);
     const needs = clamp(parseInt(document.getElementById('needsInput').value || '1', 10), 1, 200);
@@ -2082,8 +2083,16 @@ function drawLabel(node, alpha) {
     ctx.textBaseline = 'middle';
 
     if (node.type === 'world') {
-      ctx.font = '700 18px Inter, sans-serif';
-      ctx.fillText(displayText, p.x, p.y - r - 18);
+      const fontSize = clamp(r * 0.07, 18, 38);
+      const x = clamp(p.x, fontSize * 2.2, state.width - fontSize * 2.2);
+      const y = clamp(p.y - r - fontSize * 0.72, fontSize * 0.72, state.height - fontSize * 1.25);
+      ctx.font = `800 ${fontSize.toFixed(1)}px Inter, sans-serif`;
+      ctx.shadowColor = 'rgba(0,0,0,0.62)';
+      ctx.shadowBlur = Math.max(10, fontSize * 0.45);
+      ctx.shadowOffsetY = Math.max(2, fontSize * 0.08);
+      ctx.fillText(displayText, x, y);
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
       ctx.restore();
       return;
     }
@@ -2696,7 +2705,7 @@ function drawCrossSystemFlows() {
     '27-primary-care-systems-happy': makePrimaryCareTemplate('27 primary care systems-happy', 'happy'),
     'human-baby': {
       name: 'Human Baby – Thrive Ecosystem',
-      worldLabel: 'World',
+      worldLabel: 'Earth',
       systems: [
         {
           key: 'human',
@@ -3093,7 +3102,7 @@ function drawCrossSystemFlows() {
     state.currentTemplateInfo = { name: tpl.name || templateKey || 'Unknown Template', mode };
 
     clearGraph();
-    const world = createNode({ id: 'W1', label: tpl.worldLabel || 'World', type: 'world', hiddenId: uid('world'), displayName: tpl.worldLabel || 'World', description: 'Root world container.' });
+    const world = createNode({ id: 'W1', label: tpl.worldLabel || 'Earth', type: 'world', hiddenId: uid('world'), displayName: tpl.worldLabel || 'Earth', description: 'Root world container.' });
     world.radius = baseRadius('world');
     world.x = 0;
     world.y = 0;
@@ -3485,7 +3494,7 @@ function draw() {
     requestAnimationFrame(frame);
   }
 
-  buildGraph('World', 3, 1, 3);
+  buildGraph('Earth', 3, 1, 3);
   requestAnimationFrame(frame);
 })();
 </script>

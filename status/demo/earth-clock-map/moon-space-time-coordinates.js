@@ -8,14 +8,13 @@
  * prototype layer for asking better questions, not a precision lunar ephemeris.
  *
  * Moon zero point:
- *   latitude 0.000000, longitude 0.000000, altitude 0m
- *   The Moon surface zero is attached to the shared WSTC Zero Era:
- *   1974-03-13T04:40:00Z. At that instant, Moon E0/M0/V0 is the Moon's
- *   application-layer spatial origin, just as Africa zero is Earth's.
+ *   latitude 0.000000, longitude 80.965720, altitude 0m
+ *   Moon zero is born with ESTC zero: March 13, 1974 02:05 IST, on the
+ *   symbolic zero meridian through GPS 26.82989, 80.96572.
  *
  * Moon surface coordinates:
- *   E = normalize360(0 - lunar longitude)
- *   M = -lunar latitude
+ *   E = normalize360(zero longitude - lunar longitude)
+ *   M = zero latitude - lunar latitude
  *   V = altitude meters
  *
  * Motion coordinates:
@@ -32,9 +31,16 @@
 
   const CONFIG = Object.freeze({
     system: "Moon Space-Time Coordinates",
-    version: "v1 prototype",
+    version: "v2 prototype",
     epochUTC: WSTC.CONFIG.epochUTC,
-    moonZero: Object.freeze({ latitude: 0, longitude: 0, altitudeMeters: 0 }),
+    moonZero: Object.freeze({
+      latitude: 0,
+      longitude: 80.96572,
+      altitudeMeters: 0,
+      sourceLatitude: 26.82989,
+      sourceLongitude: 80.96572,
+      note: "Moon clock-map zero follows the ESTC born-zero meridian.",
+    }),
     constants: Object.freeze({
       lunarDaySeconds: 2_551_442.88,
       starYearSeconds: WSTC.CONFIG.constants.starYearSeconds,
@@ -58,15 +64,31 @@
     if (latitude < -90 || latitude > 90) throw new Error("latitude must be from -90 to +90.");
   }
 
-  function getEquatorCoordinate(longitude) {
-    WSTC.validateFinite("longitude", longitude);
-    return WSTC.normalize360(CONFIG.moonZero.longitude - normalizeLongitude(longitude));
+  function zeroCoordinateFrom(value = CONFIG.moonZero) {
+    const zero = {
+      ...CONFIG.moonZero,
+      ...(value || {}),
+    };
+    const altitudeMeters = zero.altitudeMeters ?? 0;
+    validateMoonLocation(zero.latitude, zero.longitude, altitudeMeters);
+    return {
+      ...zero,
+      longitude: normalizeLongitude(zero.longitude),
+      altitudeMeters,
+    };
   }
 
-  function getMeridianCoordinate(latitude) {
+  function getEquatorCoordinate(longitude, zeroSpaceCoordinate = CONFIG.moonZero) {
+    WSTC.validateFinite("longitude", longitude);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
+    return WSTC.normalize360(zero.longitude - normalizeLongitude(longitude));
+  }
+
+  function getMeridianCoordinate(latitude, zeroSpaceCoordinate = CONFIG.moonZero) {
     WSTC.validateFinite("latitude", latitude);
     if (latitude < -90 || latitude > 90) throw new Error("latitude must be from -90 to +90.");
-    const value = -latitude;
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
+    const value = zero.latitude - latitude;
     return Object.is(value, -0) ? 0 : value;
   }
 
@@ -103,10 +125,12 @@
     latitude = CONFIG.moonZero.latitude,
     longitude = CONFIG.moonZero.longitude,
     altitudeMeters = CONFIG.moonZero.altitudeMeters,
+    zeroSpaceCoordinate = CONFIG.moonZero,
     machinePrecision = DEFAULT_PRECISION.machine,
     labelPrecision = DEFAULT_PRECISION.label,
   } = {}) {
     validateMoonLocation(latitude, longitude, altitudeMeters);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
     const motion = WSTC.getWorldSpaceTimeCoordinates({
       time,
       isoTime,
@@ -118,8 +142,8 @@
       labelPrecision,
     });
 
-    const E = WSTC.roundNumber(getEquatorCoordinate(longitude), machinePrecision);
-    const M = WSTC.roundNumber(getMeridianCoordinate(latitude), machinePrecision);
+    const E = WSTC.roundNumber(getEquatorCoordinate(longitude, zero), machinePrecision);
+    const M = WSTC.roundNumber(getMeridianCoordinate(latitude, zero), machinePrecision);
     const V = WSTC.roundNumber(altitudeMeters, machinePrecision);
     const P = motion.wstc.P;
     const wstc = { ...motion.wstc, E, M, V };
@@ -140,6 +164,7 @@
         longitude,
         normalizedLongitude: normalizeLongitude(longitude),
         altitudeMeters,
+        zeroSpaceCoordinate: zero,
       },
       wstc,
       mstc,
@@ -162,6 +187,7 @@
     getMoonSpaceTimeCoordinates,
     getEquatorCoordinate,
     getMeridianCoordinate,
+    zeroCoordinateFrom,
     normalizeLongitude,
   };
 

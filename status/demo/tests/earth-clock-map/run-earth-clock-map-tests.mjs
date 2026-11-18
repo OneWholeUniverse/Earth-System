@@ -144,7 +144,8 @@ test('boots with earth-core, shared GeoNames, and full clock-map chrome', async 
     coordinateTitle: document.querySelector('.coordinate-card .clock-title').textContent,
     estc: document.querySelector('#estcFullLabel').textContent,
     wstc: document.querySelector('#wstcFullLabel').textContent,
-    pZero: document.querySelector('#pZeroButton').textContent
+    pZero: document.querySelector('#pZeroButton').textContent,
+    epochInput: document.querySelector('#zeroEpochInput').value
   }));
 
   assert.equal(chrome.hasGeoNames, true);
@@ -159,6 +160,12 @@ test('boots with earth-core, shared GeoNames, and full clock-map chrome', async 
   assert.match(chrome.estc, /^Y\d+, O\d+, P\d+\.\d{2}°/);
   assert.match(chrome.wstc, /^G\d+\.\d+°, S\d+\.\d{2}°, P\d+\.\d{2}°/);
   assert.match(chrome.pZero, /Earth under P0/);
+  assert.equal(chrome.epochInput, '1974-03-13T02:05');
+  assert.equal(state.zeroEpochUTC, '1974-03-12T20:35:00.000Z');
+  assert.equal(state.zeroEpochInputOffsetMinutes, 330);
+  assert.equal(state.zeroSpaceCoordinate.longitude, 80.96572);
+  assert.equal(state.moonZeroSpaceCoordinate.longitude, 80.96572);
+  assert.equal(state.marsZeroSpaceCoordinate.longitude, 80.96572);
 });
 
 test('city selection updates local arcs and coordinate labels', async ({ page }) => {
@@ -208,14 +215,51 @@ test('zero epoch control changes the clock source and reset restores default epo
     el.value = '2026-05-25T00:00';
     el.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.waitForFunction(() => window.EarthClockMapApp.getState().lastClock?.input?.epochUTC === '2026-05-25T00:00:00.000Z');
+  await page.waitForFunction(() => window.EarthClockMapApp.getState().lastClock?.input?.epochUTC === '2026-05-24T18:30:00.000Z');
   let state = await appState(page);
-  assert.equal(state.lastClock.input.epochUTC, '2026-05-25T00:00:00.000Z');
+  assert.equal(state.lastClock.input.epochUTC, '2026-05-24T18:30:00.000Z');
 
   await page.click('#resetEpochButton');
-  await page.waitForFunction(() => window.EarthClockMapApp.getState().lastClock?.input?.epochUTC === '1974-03-13T04:40:00.000Z');
+  await page.waitForFunction(() => window.EarthClockMapApp.getState().lastClock?.input?.epochUTC === '1974-03-12T20:35:00.000Z');
   state = await appState(page);
-  assert.equal(state.lastClock.input.epochUTC, '1974-03-13T04:40:00.000Z');
+  assert.equal(state.lastClock.input.epochUTC, '1974-03-12T20:35:00.000Z');
+});
+
+test('legacy saved default epoch migrates to the born-zero epoch', async ({ page }) => {
+  await page.evaluate(() => localStorage.setItem('earth-clock-map.zeroEpochUTC', '1974-03-13T04:40:00.000Z'));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() =>
+    window.EarthClockMapApp &&
+    window.EarthClockMapApp.getState().lastClock?.input?.epochUTC === '1974-03-12T20:35:00.000Z'
+  );
+  const state = await appState(page);
+  assert.equal(await page.locator('#zeroEpochInput').inputValue(), '1974-03-13T02:05');
+  assert.equal(state.zeroEpochUTC, '1974-03-12T20:35:00.000Z');
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem('earth-clock-map.zeroEpochUTC')),
+    '1974-03-12T20:35:00.000Z'
+  );
+});
+
+test('zero configuration API updates epoch and Earth space origin', async ({ page }) => {
+  const configured = await page.evaluate(() => window.EarthClockMapApp.configureZero({
+    epochUTC: '2026-05-25T00:00:00Z',
+    zeroSpaceCoordinate: { latitude: 12, longitude: 20, altitudeMeters: 0 },
+    moonZeroSpaceCoordinate: { latitude: 3, longitude: 40, altitudeMeters: 0 },
+    marsZeroSpaceCoordinate: { latitude: -4, longitude: 50, altitudeMeters: 0 }
+  }));
+  assert.equal(configured.zeroEpochUTC, '2026-05-25T00:00:00.000Z');
+  assert.equal(configured.zeroSpaceCoordinate.latitude, 12);
+  assert.equal(configured.zeroSpaceCoordinate.longitude, 20);
+  assert.equal(configured.moonZeroSpaceCoordinate.longitude, 40);
+  assert.equal(configured.marsZeroSpaceCoordinate.longitude, 50);
+  await page.waitForFunction(() => window.EarthClockMapApp.getState().lastClock?.input?.zeroSpaceCoordinate?.longitude === 20);
+  const state = await appState(page);
+  assert.equal(state.zeroSpaceCoordinate.latitude, 12);
+  assert.equal(state.zeroSpaceCoordinate.longitude, 20);
+  assert.equal(state.moonZeroSpaceCoordinate.longitude, 40);
+  assert.equal(state.marsZeroSpaceCoordinate.longitude, 50);
+  assert.equal(state.lastClock.input.zeroSpaceCoordinate.longitude, 20);
 });
 
 test('P0 button emits a globe fly-to-location workflow', async ({ page }) => {
@@ -247,11 +291,13 @@ test('target selector swaps Earth, Moon, Mars, and Sun coordinate views', async 
     const labels = await page.evaluate(() => ({
       title: document.querySelector('.coordinate-card .clock-title').textContent,
       meta: document.querySelector('#wstcMeta').textContent,
+      estc: document.querySelector('#estcFullLabel').textContent,
       active: document.querySelector('.dropdown-item.active')?.dataset.target
     }));
     assert.equal(labels.active, target);
     assert.match(labels.title, titlePattern);
     if (metaPattern) assert.match(labels.meta, metaPattern);
+    if (target === 'moon' || target === 'mars') assert.match(labels.estc, /E0\.000°.*M0\.000°/);
   }
 });
 

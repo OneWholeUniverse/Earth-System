@@ -100,6 +100,28 @@
   let lastMapSubsolar = null;
   let lastPolishedStyleMode = null;
   const mapPaintDefaults = new Map();
+  const VIEW_ORIENTATIONS = {
+    'human-north': {
+      id: 'human-north',
+      mapBearing: 0,
+      cameraUp: [0, 1, 0],
+      dragSign: 1,
+      frameLatitudeOffset: 0,
+      frameLongitudeOffset: 0,
+      initialOrbit: null
+    },
+    'south-is-north': {
+      id: 'south-is-north',
+      mapBearing: 168,
+      cameraUp: [0, -0.966, -0.259],
+      dragSign: -1,
+      frameLatitudeOffset: 15,
+      frameLongitudeOffset: 0,
+      initialOrbit: { theta: -0.12, phi: 0.14 }
+    }
+  };
+  const viewOrientation = VIEW_ORIENTATIONS[options.viewOrientation] || VIEW_ORIENTATIONS['human-north'];
+  if (viewOrientation.initialOrbit) Object.assign(orbit, viewOrientation.initialOrbit);
   let t = 0;
   let sunFocusBlend = 0.0;
   let mobilePinching = false;
@@ -185,6 +207,7 @@
       dynamicCenter.y + Math.sin(orbit.phi) * r,
       dynamicCenter.z + Math.cos(orbit.theta) * cp * r
     );
+    camera.up.fromArray(viewOrientation.cameraUp).normalize();
     camera.lookAt(dynamicCenter);
   }
 
@@ -1080,6 +1103,7 @@
         style: MAP_STYLE_URLS[currentMapStyleMode],
         center: [lng, lat],
         zoom,
+        bearing: viewOrientation.mapBearing,
         pitch: 0,
         interactive: true,
         attributionControl: false
@@ -1103,7 +1127,7 @@
         scheduleMapLayerInstall();
       });
     } else {
-      streetMap.jumpTo({ center: [lng, lat], zoom });
+      streetMap.jumpTo({ center: [lng, lat], zoom, bearing: viewOrientation.mapBearing });
       streetMap.resize();
       updateBaseMapNightMode(lat, lng);
       tuneVectorMapStyle();
@@ -1155,7 +1179,9 @@
     if (flight.active) flight.active = false;
 
     const startCameraPos = camera.position.clone();
-    const targetSurface = latLngToVec(lat, lng, 1.045).applyAxisAngle(new THREE.Vector3(0, 1, 0), earthGroup.rotation.y);
+    const frameLat = Math.max(-85, Math.min(85, lat + viewOrientation.frameLatitudeOffset));
+    const frameLng = normalizeLng(lng + viewOrientation.frameLongitudeOffset);
+    const targetSurface = latLngToVec(frameLat, frameLng, 1.045).applyAxisAngle(new THREE.Vector3(0, 1, 0), earthGroup.rotation.y);
     const targetDir = targetSurface.clone().normalize();
     const startDir = startCameraPos.lengthSq() > 0.0001 ? startCameraPos.clone().normalize() : targetDir.clone();
     const highApproach = targetDir.clone().multiplyScalar(1.72);
@@ -1323,6 +1349,7 @@
         style: currentMapStyleMode,
         subsolar: lastMapSubsolar ? { ...lastMapSubsolar } : null
       },
+      viewOrientation: viewOrientation.id,
       orbit: { ...orbit },
       center: dynamicCenter.clone(),
       cameraPosition: camera.position.clone()
@@ -1381,8 +1408,8 @@
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     const panSpeed = zoomPanSensitivity() / zoomMassFactor();
-    orbit.theta -= dx * 0.005 * panSpeed;
-    orbit.phi += dy * 0.004 * panSpeed;
+    orbit.theta -= dx * 0.005 * panSpeed * viewOrientation.dragSign;
+    orbit.phi += dy * 0.004 * panSpeed * viewOrientation.dragSign;
     orbit.phi = Math.max(-1.25, Math.min(1.25, orbit.phi));
     lastX = e.clientX;
     lastY = e.clientY;

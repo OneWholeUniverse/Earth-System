@@ -45,6 +45,7 @@ body.micro-view .map-coordinate-chip{opacity:1}
 .fallback-space:before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.72) 0 1px,transparent 1.6px);background-size:67px 67px;opacity:.20}
 #ui-container{position:fixed;left:20px;bottom:20px;z-index:7;transition:opacity .35s ease}
 body.micro-view #ui-container{opacity:0;pointer-events:none}
+.experiment-tag{display:inline-flex;align-items:center;height:28px;margin-bottom:8px;border:1px solid rgba(244,208,111,.34);border-radius:999px;background:rgba(244,208,111,.14);color:#f9e8a7;box-shadow:0 12px 34px rgba(0,0,0,.30);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:0 11px;font:850 10px/1 Inter,system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase}
 #target-btn{min-width:112px;height:38px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(5,12,20,.78);color:var(--ink);box-shadow:0 16px 42px rgba(0,0,0,.36);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font:850 12px/1 Inter,system-ui,sans-serif;cursor:pointer;padding:0 14px}
 #target-btn:hover{background:rgba(255,255,255,.11)}
 .body-icon{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;font-size:15px;line-height:1}
@@ -122,7 +123,9 @@ body.micro-view #ui-container{opacity:0;pointer-events:none}
 <canvas id="c"></canvas>
 <div id="map-container"></div>
 <div id="mapCoordinateChip" class="map-coordinate-chip">E-- | M--</div>
-<div id="ui-container" aria-hidden="true">
+<div id="ui-container">
+  <div class="experiment-tag">Sunrise from the west</div>
+  <br>
   <button id="target-btn" type="button">Earth ▾</button>
   <div id="dropdown-menu" class="dropdown-content">
     <div class="dropdown-item active" data-target="earth"><span class="body-icon earth-icon" aria-hidden="true">🌍</span> Earth</div>
@@ -175,10 +178,10 @@ body.micro-view #ui-container{opacity:0;pointer-events:none}
     <button id="pZeroButton" class="pzero-button" type="button">P0 --</button>
     <div class="epoch-control" aria-label="Zero Epoch control">
       <div class="epoch-row">
-        <span>Zero Epoch UTC</span>
+        <span>Zero Epoch IST</span>
         <button id="resetEpochButton" type="button">Reset</button>
       </div>
-      <input id="zeroEpochInput" type="datetime-local" value="1974-03-13T04:40">
+      <input id="zeroEpochInput" type="datetime-local" value="1974-03-13T02:05">
     </div>
   </section>
 </aside>
@@ -195,13 +198,17 @@ body.micro-view #ui-container{opacity:0;pointer-events:none}
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
 window.EARTH_CORE_ASSET_BASE = '../earth-core/assets/';
+window.EARTH_CORE_OPTIONS = {
+  ...(window.EARTH_CORE_OPTIONS || {}),
+  viewOrientation: 'south-is-north',
+};
 </script>
-<script src="../earth-core/earth-core.js?v=moonlight-map-10"></script>
+<script src="../earth-core/earth-core.js?v=sunrise-from-the-west-5"></script>
 <script src="../shared/geonames.js?v=2"></script>
-<script src="./world-space-time-coordinates.js?v=36"></script>
-<script src="./earth-space-time-coordinates.js?v=1"></script>
-<script src="./moon-space-time-coordinates.js?v=1"></script>
-<script src="./mars-space-time-coordinates.js?v=1"></script>
-<script src="./earth-clock-map-app.js?v=49"></script>
+<script src="./world-space-time-coordinates.js?v=37"></script>
+<script src="./earth-space-time-coordinates.js?v=2"></script>
+<script src="./moon-space-time-coordinates.js?v=2"></script>
+<script src="./mars-space-time-coordinates.js?v=2"></script>
+<script src="./earth-clock-map-app.js?v=51"></script>
 </body>
 </html>

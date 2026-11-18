@@ -1,7 +1,36 @@
 (() => {
   const DATA_URL = '../shared/assets/data/geonames-cities500.tsv';
   const DEFAULT_CITY = 'Panjim';
-  const DEFAULT_ZERO_EPOCH_UTC = '1974-03-13T04:40:00Z';
+  const APP_CONFIG = window.EARTH_CLOCK_MAP_CONFIG || {};
+  // Zero is born at March 13, 1974 02:05 IST, stored internally as UTC.
+  const DEFAULT_ZERO_EPOCH_DATE = new Date(APP_CONFIG.zeroEpochUTC || '1974-03-12T20:35:00Z');
+  const DEFAULT_ZERO_EPOCH_UTC = Number.isNaN(DEFAULT_ZERO_EPOCH_DATE.getTime())
+    ? '1974-03-12T20:35:00.000Z'
+    : DEFAULT_ZERO_EPOCH_DATE.toISOString();
+  const LEGACY_ZERO_EPOCH_DEFAULTS = new Set([
+    '1974-03-13T04:40:00.000Z',
+    '1974-03-13T04:40:00Z',
+  ]);
+  const ZERO_EPOCH_INPUT_OFFSET_MINUTES = Number.isFinite(APP_CONFIG.zeroEpochInputOffsetMinutes)
+    ? APP_CONFIG.zeroEpochInputOffsetMinutes
+    : 330;
+  const DEFAULT_ZERO_SPACE_COORDINATE = Object.freeze({
+    // Zero space is born on the equator at the meridian through GPS 26.82989, 80.96572.
+    latitude: 0,
+    longitude: 80.96572,
+    altitudeMeters: 0,
+    sourceLatitude: 26.82989,
+    sourceLongitude: 80.96572,
+    ...(APP_CONFIG.zeroSpaceCoordinate || {}),
+  });
+  const DEFAULT_MOON_ZERO_SPACE_COORDINATE = Object.freeze({
+    ...DEFAULT_ZERO_SPACE_COORDINATE,
+    ...(APP_CONFIG.moonZeroSpaceCoordinate || {}),
+  });
+  const DEFAULT_MARS_ZERO_SPACE_COORDINATE = Object.freeze({
+    ...DEFAULT_ZERO_SPACE_COORDINATE,
+    ...(APP_CONFIG.marsZeroSpaceCoordinate || {}),
+  });
   const ZERO_EPOCH_STORAGE_KEY = 'earth-clock-map.zeroEpochUTC';
   const CENTER = 110;
   const EM_LAYER_ID = 'wstc-em-coordinate-layer';
@@ -63,19 +92,23 @@
   let pendingMapReentry = null;
   let currentPZero = null;
   let zeroEpochUTC = loadZeroEpochUTC();
+  let zeroSpaceCoordinate = { ...DEFAULT_ZERO_SPACE_COORDINATE };
+  let moonZeroSpaceCoordinate = { ...DEFAULT_MOON_ZERO_SPACE_COORDINATE };
+  let marsZeroSpaceCoordinate = { ...DEFAULT_MARS_ZERO_SPACE_COORDINATE };
   let activeTarget = 'earth';
   const skyDrag = { active: false };
   const seasonDrag = { active: false };
 
   function toEpochInputValue(iso) {
     const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '1974-03-13T04:40';
-    return date.toISOString().slice(0, 16);
+    if (Number.isNaN(date.getTime())) return '1974-03-13T02:05';
+    return new Date(date.getTime() + ZERO_EPOCH_INPUT_OFFSET_MINUTES * 60000).toISOString().slice(0, 16);
   }
 
   function epochInputToUTC(value) {
     if (!value) return DEFAULT_ZERO_EPOCH_UTC;
-    const date = new Date(`${value}:00Z`);
+    const localAsUtc = new Date(`${value}:00Z`);
+    const date = new Date(localAsUtc.getTime() - ZERO_EPOCH_INPUT_OFFSET_MINUTES * 60000);
     if (Number.isNaN(date.getTime())) return DEFAULT_ZERO_EPOCH_UTC;
     return date.toISOString();
   }
@@ -83,7 +116,14 @@
   function loadZeroEpochUTC() {
     try {
       const saved = localStorage.getItem(ZERO_EPOCH_STORAGE_KEY);
-      if (saved && !Number.isNaN(new Date(saved).getTime())) return new Date(saved).toISOString();
+      if (saved && !Number.isNaN(new Date(saved).getTime())) {
+        const savedUTC = new Date(saved).toISOString();
+        if (LEGACY_ZERO_EPOCH_DEFAULTS.has(savedUTC) || LEGACY_ZERO_EPOCH_DEFAULTS.has(saved)) {
+          localStorage.setItem(ZERO_EPOCH_STORAGE_KEY, DEFAULT_ZERO_EPOCH_UTC);
+          return DEFAULT_ZERO_EPOCH_UTC;
+        }
+        return savedUTC;
+      }
     } catch (error) {
       // Storage can be unavailable in private or embedded browser contexts.
     }
@@ -401,6 +441,7 @@
     return window.EarthSpaceTimeCoordinates.getEarthSpaceTimeCoordinates({
       time: date,
       epochUTC: zeroEpochUTC,
+      zeroSpaceCoordinate,
       latitude: city.lat,
       longitude: city.lng,
       altitudeMeters: 0,
@@ -808,6 +849,7 @@
     const p0Surface = window.EarthSpaceTimeCoordinates.getEarthSurfaceUnderPZero({
       time: clock.input.timeUTC,
       epochUTC: clock.input.epochUTC,
+      zeroSpaceCoordinate,
     });
     const p0Longitude = p0Surface.longitude;
     const now = new Date();
@@ -972,8 +1014,8 @@
     if (!city) return EMPTY_FEATURE_COLLECTION;
     const latitude = clampLatitude(city.lat);
     const longitude = Math.max(-180, Math.min(180, city.lng));
-    const eLabel = coordinateLabel(clock, 'wstc', 'E', window.EarthSpaceTimeCoordinates.getEquatorCoordinate(longitude));
-    const mLabel = coordinateLabel(clock, 'wstc', 'M', window.EarthSpaceTimeCoordinates.getMeridianCoordinate(latitude));
+    const eLabel = coordinateLabel(clock, 'wstc', 'E', window.EarthSpaceTimeCoordinates.getEquatorCoordinate(longitude, zeroSpaceCoordinate));
+    const mLabel = coordinateLabel(clock, 'wstc', 'M', window.EarthSpaceTimeCoordinates.getMeridianCoordinate(latitude, zeroSpaceCoordinate));
     const place = city.city || city.cityAscii || 'city';
     const eLabelLat = clampLatitude(latitude + (latitude > 72 ? -8 : 8));
     const mLabelLng = longitude > 145 ? longitude - 26 : longitude + 26;
@@ -1008,7 +1050,7 @@
         {
           type: 'Feature',
           properties: { role: 'origin', label: 'E0 / equator' },
-          geometry: { type: 'Point', coordinates: [20, 0] },
+          geometry: { type: 'Point', coordinates: [zeroSpaceCoordinate.longitude, zeroSpaceCoordinate.latitude] },
         },
       ],
     };
@@ -1103,8 +1145,8 @@
 
   function updateMapCoordinateChip(clock = lastClock) {
     if (!els.mapCoordinateChip || !selectedCity || !clock) return;
-    const eLabel = coordinateLabel(clock, 'wstc', 'E', window.EarthSpaceTimeCoordinates.getEquatorCoordinate(selectedCity.lng));
-    const mLabel = coordinateLabel(clock, 'wstc', 'M', window.EarthSpaceTimeCoordinates.getMeridianCoordinate(selectedCity.lat));
+    const eLabel = coordinateLabel(clock, 'wstc', 'E', window.EarthSpaceTimeCoordinates.getEquatorCoordinate(selectedCity.lng, zeroSpaceCoordinate));
+    const mLabel = coordinateLabel(clock, 'wstc', 'M', window.EarthSpaceTimeCoordinates.getMeridianCoordinate(selectedCity.lat, zeroSpaceCoordinate));
     els.mapCoordinateChip.textContent = `${shortPlace(selectedCity)} map focus | ${eLabel} | ${mLabel}`;
   }
 
@@ -1113,9 +1155,10 @@
     return window.MoonSpaceTimeCoordinates.getMoonSpaceTimeCoordinates({
       time: now,
       epochUTC: zeroEpochUTC,
-      latitude: 0,
-      longitude: 0,
-      altitudeMeters: 0,
+      latitude: moonZeroSpaceCoordinate.latitude,
+      longitude: moonZeroSpaceCoordinate.longitude,
+      altitudeMeters: moonZeroSpaceCoordinate.altitudeMeters,
+      zeroSpaceCoordinate: moonZeroSpaceCoordinate,
       labelPrecision: { G: 6, S: 2, P: 2, E: 3, M: 3, V: 0 },
     });
   }
@@ -1125,9 +1168,10 @@
     return window.MarsSpaceTimeCoordinates.getMarsSpaceTimeCoordinates({
       time: now,
       epochUTC: zeroEpochUTC,
-      latitude: 0,
-      longitude: 0,
-      altitudeMeters: 0,
+      latitude: marsZeroSpaceCoordinate.latitude,
+      longitude: marsZeroSpaceCoordinate.longitude,
+      altitudeMeters: marsZeroSpaceCoordinate.altitudeMeters,
+      zeroSpaceCoordinate: marsZeroSpaceCoordinate,
       labelPrecision: { G: 6, S: 2, P: 2, E: 3, M: 3, V: 0 },
     });
   }
@@ -1362,6 +1406,7 @@
     const clock = window.EarthSpaceTimeCoordinates.getEarthSpaceTimeCoordinates({
       time: now,
       epochUTC: zeroEpochUTC,
+      zeroSpaceCoordinate,
       latitude: selectedCity.lat,
       longitude: selectedCity.lng,
       altitudeMeters: cityAltitudeMeters(selectedCity),
@@ -1465,7 +1510,35 @@
           cityCount: cities.length,
           selectedCity: selectedCity ? labelForCity(selectedCity) : null,
           lastClock,
+          zeroEpochUTC,
+          zeroEpochInputOffsetMinutes: ZERO_EPOCH_INPUT_OFFSET_MINUTES,
+          zeroSpaceCoordinate,
+          moonZeroSpaceCoordinate,
+          marsZeroSpaceCoordinate,
+          currentPZero,
         }),
+        configureZero: ({ epochUTC, zeroSpaceCoordinate: nextZeroSpaceCoordinate, moonZeroSpaceCoordinate: nextMoonZeroSpaceCoordinate, marsZeroSpaceCoordinate: nextMarsZeroSpaceCoordinate } = {}) => {
+          if (epochUTC !== undefined) {
+            const parsed = new Date(epochUTC);
+            if (Number.isNaN(parsed.getTime())) throw new Error('epochUTC must be a valid date or ISO string.');
+            zeroEpochUTC = parsed.toISOString();
+            saveZeroEpochUTC(zeroEpochUTC);
+            if (els.zeroEpochInput) els.zeroEpochInput.value = toEpochInputValue(zeroEpochUTC);
+          }
+          if (nextZeroSpaceCoordinate) {
+            zeroSpaceCoordinate = window.EarthSpaceTimeCoordinates.zeroCoordinateFrom(nextZeroSpaceCoordinate);
+            refreshEMMapLayer(lastClock);
+            updateMapCoordinateChip(lastClock);
+          }
+          if (nextMoonZeroSpaceCoordinate) {
+            moonZeroSpaceCoordinate = window.MoonSpaceTimeCoordinates.zeroCoordinateFrom(nextMoonZeroSpaceCoordinate);
+          }
+          if (nextMarsZeroSpaceCoordinate) {
+            marsZeroSpaceCoordinate = window.MarsSpaceTimeCoordinates.zeroCoordinateFrom(nextMarsZeroSpaceCoordinate);
+          }
+          updateClock();
+          return { zeroEpochUTC, zeroSpaceCoordinate, moonZeroSpaceCoordinate, marsZeroSpaceCoordinate };
+        },
         selectCityByName: name => {
           const q = normalizeSearch(name);
           const match = cities.find(city => normalizeSearch(city.city) === q || normalizeSearch(city.cityAscii) === q)

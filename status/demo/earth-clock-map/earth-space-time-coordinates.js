@@ -7,9 +7,9 @@
  * coordinates and Earth orientation overlays.
  *
  * Stable Earth space coordinates:
- *   Africa zero: latitude 0.000000, longitude 20.000000°E, altitude 0m
- *   E = normalize360(20 - GPS longitude)
- *   M = -GPS latitude
+ *   Zero space coordinate: latitude 0.000000, longitude 80.965720°E, altitude 0m
+ *   E = normalize360(zero longitude - GPS longitude)
+ *   M = zero latitude - GPS latitude
  *   V = altitude meters
  *
  * Earth orientation overlays:
@@ -24,11 +24,22 @@
   const WSTC = root.WorldSpaceTimeCoordinates;
   if (!WSTC) throw new Error("EarthSpaceTimeCoordinates requires WorldSpaceTimeCoordinates.");
 
+  const DEFAULT_ZERO_SPACE_COORDINATE = Object.freeze({
+    // Zero space is born on the equator at the meridian through GPS 26.82989, 80.96572.
+    latitude: 0,
+    longitude: 80.96572,
+    altitudeMeters: 0,
+    sourceLatitude: 26.82989,
+    sourceLongitude: 80.96572,
+    note: "Equator point on the meridian through 26.82989, 80.96572.",
+  });
+
   const CONFIG = Object.freeze({
     system: "Earth Space-Time Coordinates",
-    version: "v1 prototype",
+    version: "v2 prototype",
     epochUTC: WSTC.CONFIG.epochUTC,
-    africaZero: Object.freeze({ latitude: 0, longitude: 20, altitudeMeters: 0 }),
+    zeroSpaceCoordinate: DEFAULT_ZERO_SPACE_COORDINATE,
+    africaZero: DEFAULT_ZERO_SPACE_COORDINATE,
     constants: Object.freeze({
       planetDaySeconds: WSTC.CONFIG.constants.planetDaySeconds,
       starYearSeconds: WSTC.CONFIG.constants.starYearSeconds,
@@ -53,15 +64,31 @@
     if (latitude < -90 || latitude > 90) throw new Error("latitude must be from -90 to +90.");
   }
 
-  function getEquatorCoordinate(longitude) {
-    WSTC.validateFinite("longitude", longitude);
-    return WSTC.normalize360(CONFIG.africaZero.longitude - normalizeLongitude(longitude));
+  function zeroCoordinateFrom(value = CONFIG.zeroSpaceCoordinate) {
+    const zero = {
+      ...CONFIG.zeroSpaceCoordinate,
+      ...(value || {}),
+    };
+    const altitudeMeters = zero.altitudeMeters ?? 0;
+    validateEarthLocation(zero.latitude, zero.longitude, altitudeMeters);
+    return {
+      ...zero,
+      longitude: normalizeLongitude(zero.longitude),
+      altitudeMeters,
+    };
   }
 
-  function getMeridianCoordinate(latitude) {
+  function getEquatorCoordinate(longitude, zeroSpaceCoordinate = CONFIG.zeroSpaceCoordinate) {
+    WSTC.validateFinite("longitude", longitude);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
+    return WSTC.normalize360(zero.longitude - normalizeLongitude(longitude));
+  }
+
+  function getMeridianCoordinate(latitude, zeroSpaceCoordinate = CONFIG.zeroSpaceCoordinate) {
     WSTC.validateFinite("latitude", latitude);
     if (latitude < -90 || latitude > 90) throw new Error("latitude must be from -90 to +90.");
-    return -latitude;
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
+    return zero.latitude - latitude;
   }
 
   function formatLabels({ wstc, estc }, precision = DEFAULT_PRECISION.label) {
@@ -97,10 +124,12 @@
     latitude,
     longitude,
     altitudeMeters = 0,
+    zeroSpaceCoordinate = CONFIG.zeroSpaceCoordinate,
     machinePrecision = DEFAULT_PRECISION.machine,
     labelPrecision = DEFAULT_PRECISION.label,
   }) {
     validateEarthLocation(latitude, longitude, altitudeMeters);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
     const motion = WSTC.getWorldSpaceTimeCoordinates({
       time,
       isoTime,
@@ -112,8 +141,8 @@
       labelPrecision,
     });
 
-    const E = WSTC.roundNumber(getEquatorCoordinate(longitude), machinePrecision);
-    const M = WSTC.roundNumber(getMeridianCoordinate(latitude), machinePrecision);
+    const E = WSTC.roundNumber(getEquatorCoordinate(longitude, zero), machinePrecision);
+    const M = WSTC.roundNumber(getMeridianCoordinate(latitude, zero), machinePrecision);
     const V = WSTC.roundNumber(altitudeMeters, machinePrecision);
     const P = motion.wstc.P;
     const wstc = { ...motion.wstc, E, M, V };
@@ -134,6 +163,7 @@
         longitude,
         normalizedLongitude: normalizeLongitude(longitude),
         altitudeMeters,
+        zeroSpaceCoordinate: zero,
       },
       wstc,
       estc,
@@ -151,23 +181,26 @@
     };
   }
 
-  function getPZeroMeridian(coordinatesOrP) {
+  function getPZeroMeridian(coordinatesOrP, zeroSpaceCoordinate = CONFIG.zeroSpaceCoordinate) {
     const p = typeof coordinatesOrP === "number" ? coordinatesOrP : coordinatesOrP?.wstc?.P;
     WSTC.validateFinite("P", p);
-    return normalizeLongitude(CONFIG.africaZero.longitude + p);
+    const zero = zeroCoordinateFrom(coordinatesOrP?.input?.zeroSpaceCoordinate || zeroSpaceCoordinate);
+    return normalizeLongitude(zero.longitude + p);
   }
 
-  function getEarthSurfaceUnderPZero({ time, isoTime, epochUTC = CONFIG.epochUTC } = {}) {
+  function getEarthSurfaceUnderPZero({ time, isoTime, epochUTC = CONFIG.epochUTC, zeroSpaceCoordinate = CONFIG.zeroSpaceCoordinate } = {}) {
     const dateUTC = WSTC.parseDate(time ?? isoTime);
     const epochDateUTC = WSTC.parseDate(epochUTC);
+    const zero = zeroCoordinateFrom(zeroSpaceCoordinate);
     const elapsedSeconds = (dateUTC.getTime() - epochDateUTC.getTime()) / 1000;
     const earthOrientationPhase =
       WSTC.cycleFraction(elapsedSeconds / CONFIG.constants.earthSiderealRotationSeconds) * 360;
     return {
-      latitude: CONFIG.africaZero.latitude,
-      longitude: normalizeLongitude(CONFIG.africaZero.longitude + earthOrientationPhase),
+      latitude: zero.latitude,
+      longitude: normalizeLongitude(zero.longitude + earthOrientationPhase),
       earthOrientationPhase,
       elapsedSeconds,
+      zeroSpaceCoordinate: zero,
       note:
         "This is the Earth surface point currently under the abstract P0 mark; it is an ESTC orientation overlay, not a WSTC coordinate.",
     };
@@ -180,6 +213,7 @@
     getEarthSurfaceUnderPZero,
     getEquatorCoordinate,
     getMeridianCoordinate,
+    zeroCoordinateFrom,
     normalizeLongitude,
   };
 

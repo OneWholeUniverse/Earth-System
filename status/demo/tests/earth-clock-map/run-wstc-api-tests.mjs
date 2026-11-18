@@ -33,7 +33,7 @@ const epoch = wstc.CONFIG.epochUTC;
 const daySeconds = wstc.CONFIG.constants.planetDaySeconds;
 const yearSeconds = wstc.CONFIG.constants.starYearSeconds;
 const galaxySeconds = wstc.CONFIG.constants.galaxyCycleSeconds;
-const africaZero = estc.CONFIG.africaZero;
+const earthZero = estc.CONFIG.zeroSpaceCoordinate;
 
 function closeTo(actual, expected, epsilon = 1e-9, message = 'values should be close') {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${message}: expected ${expected}, got ${actual}`);
@@ -56,9 +56,10 @@ function earthAt(secondsAfterEpoch, options = {}) {
   return estc.getEarthSpaceTimeCoordinates({
     time: timeAfter(secondsAfterEpoch),
     epochUTC: options.epochUTC ?? epoch,
-    latitude: options.latitude ?? africaZero.latitude,
-    longitude: options.longitude ?? africaZero.longitude,
-    altitudeMeters: options.altitudeMeters ?? africaZero.altitudeMeters,
+    latitude: options.latitude ?? earthZero.latitude,
+    longitude: options.longitude ?? earthZero.longitude,
+    altitudeMeters: options.altitudeMeters ?? earthZero.altitudeMeters,
+    zeroSpaceCoordinate: options.zeroSpaceCoordinate ?? earthZero,
     machinePrecision: options.machinePrecision ?? 12,
     labelPrecision: options.labelPrecision,
   });
@@ -96,6 +97,7 @@ test('WSTC exports only stable coordinate-map primitives', () => {
 
 test('WSTC Zero Era starts at G0/S0/P0', () => {
   const clock = worldAt(0);
+  assert.equal(epoch, '1974-03-12T20:35:00Z');
   assert.equal(clock.input.epochUTC, new Date(epoch).toISOString());
   closeTo(clock.wstc.G, 0);
   closeTo(clock.wstc.S, 0);
@@ -200,11 +202,16 @@ test('ESTC exports Earth application helpers', () => {
     'getEarthSurfaceUnderPZero',
     'getEquatorCoordinate',
     'getMeridianCoordinate',
+    'zeroCoordinateFrom',
     'normalizeLongitude',
   ]) {
     assert.ok(estc[name], `${name} should be exported`);
   }
-  assert.equal(estc.CONFIG.africaZero.longitude, 20);
+  assert.equal(estc.CONFIG.zeroSpaceCoordinate.latitude, 0);
+  assert.equal(estc.CONFIG.zeroSpaceCoordinate.longitude, 80.96572);
+  assert.equal(estc.CONFIG.zeroSpaceCoordinate.sourceLatitude, 26.82989);
+  assert.equal(estc.CONFIG.zeroSpaceCoordinate.sourceLongitude, 80.96572);
+  assert.equal(estc.CONFIG.africaZero.longitude, 80.96572);
   assert.equal(estc.CONFIG.constants.earthSiderealRotationSeconds, 86164.0905);
 });
 
@@ -218,7 +225,7 @@ test('ESTC composes WSTC motion with Earth E/M/V and Y/O counters', () => {
   closeTo(clock.wstc.V, 0);
   assert.equal(clock.estc.Y, 0);
   assert.equal(clock.estc.O, 0);
-  assert.equal(estc.getPZeroMeridian(clock), 20);
+  closeTo(estc.getPZeroMeridian(clock), 80.96572);
 
   const nextDay = earthAt(daySeconds);
   closeTo(nextDay.wstc.P, 0);
@@ -230,16 +237,16 @@ test('ESTC Earth surface under P0 is an orientation overlay, not WSTC core', () 
   const clock = estc.getEarthSpaceTimeCoordinates({
     time: afterOneAtomicDay,
     epochUTC: epoch,
-    latitude: africaZero.latitude,
-    longitude: africaZero.longitude,
+    latitude: earthZero.latitude,
+    longitude: earthZero.longitude,
     altitudeMeters: 0,
   });
   const surface = estc.getEarthSurfaceUnderPZero({ time: afterOneAtomicDay, epochUTC: epoch });
 
   closeTo(clock.wstc.P, 0);
-  closeTo(estc.getPZeroMeridian(clock), 20);
+  closeTo(estc.getPZeroMeridian(clock), 80.96572);
   closeTo(surface.latitude, 0);
-  closeTo(surface.longitude, 20.985647495461, 1e-9);
+  closeTo(surface.longitude, 81.951367495461, 1e-9);
   closeTo(surface.earthOrientationPhase, 0.985647495461, 1e-9);
   assert.match(surface.note, /ESTC orientation overlay/);
 });
@@ -249,23 +256,23 @@ test('ESTC P0 surface overlay moves east while stable P remains on the coordinat
   const clock = estc.getEarthSpaceTimeCoordinates({
     time: afterTenAtomicDays,
     epochUTC: epoch,
-    latitude: africaZero.latitude,
-    longitude: africaZero.longitude,
+    latitude: earthZero.latitude,
+    longitude: earthZero.longitude,
     altitudeMeters: 0,
   });
   const surface = estc.getEarthSurfaceUnderPZero({ time: afterTenAtomicDays, epochUTC: epoch });
   closeTo(clock.wstc.P, 0);
-  closeTo(estc.getPZeroMeridian(clock), 20);
-  assert.ok(surface.longitude > 29 && surface.longitude < 30, 'Earth orientation overlay should be east of Africa zero after ten atomic days');
+  closeTo(estc.getPZeroMeridian(clock), 80.96572);
+  assert.ok(surface.longitude > 90 && surface.longitude < 91, 'Earth orientation overlay should be east of zero space after ten atomic days');
 });
 
 test('ESTC E and M helpers match the documented GPS conversion', () => {
   const cases = [
-    { longitude: 20, expectedE: 0 },
-    { longitude: 21, expectedE: 359 },
-    { longitude: 19, expectedE: 1 },
-    { longitude: -160, expectedE: 180 },
-    { longitude: 200, expectedE: 180 },
+    { longitude: 80.96572, expectedE: 0 },
+    { longitude: 81.96572, expectedE: 359 },
+    { longitude: 79.96572, expectedE: 1 },
+    { longitude: -99.03428, expectedE: 180 },
+    { longitude: 260.96572, expectedE: 180 },
   ];
   for (const testCase of cases) {
     closeTo(estc.getEquatorCoordinate(testCase.longitude), testCase.expectedE);
@@ -278,6 +285,19 @@ test('ESTC E and M helpers match the documented GPS conversion', () => {
   closeTo(earthAt(0, { latitude: -45 }).wstc.M, 45);
 });
 
+test('ESTC zero space coordinate can be configured per call', () => {
+  const customZero = { latitude: 12, longitude: 20, altitudeMeters: 0 };
+  closeTo(estc.getEquatorCoordinate(20, customZero), 0);
+  closeTo(estc.getMeridianCoordinate(10, customZero), 2);
+  const clock = earthAt(0, { latitude: 10, longitude: 25, zeroSpaceCoordinate: customZero });
+  closeTo(clock.wstc.E, 355);
+  closeTo(clock.wstc.M, 2);
+  closeTo(estc.getPZeroMeridian(clock), 20);
+  const surface = estc.getEarthSurfaceUnderPZero({ time: epoch, epochUTC: epoch, zeroSpaceCoordinate: customZero });
+  closeTo(surface.latitude, 12);
+  closeTo(surface.longitude, 20);
+});
+
 test('ESTC labels and strings use the selected precision', () => {
   const clock = estc.getEarthSpaceTimeCoordinates({
     time: timeAfter(12345),
@@ -287,7 +307,7 @@ test('ESTC labels and strings use the selected precision', () => {
     labelPrecision: { G: 6, S: 2, P: 2, E: 3, M: 3, V: 0 },
   });
   assert.match(clock.labels.wstc.P, /^P\d+\.\d{2}°$/);
-  assert.equal(clock.labels.wstc.E, 'E10.810°');
+  assert.equal(clock.labels.wstc.E, 'E71.776°');
   assert.equal(clock.labels.wstc.M, 'M-45.464°');
   assert.equal(clock.labels.wstc.V, 'V127m');
   assert.equal(clock.strings.wstc, [
@@ -301,9 +321,11 @@ test('ESTC labels and strings use the selected precision', () => {
 });
 
 test('MSTC composes WSTC motion with Moon E/M/V and lunar P cycle', () => {
-  assert.equal(mstc.CONFIG.moonZero.longitude, 0);
+  assert.equal(mstc.CONFIG.moonZero.longitude, 80.96572);
+  assert.equal(mstc.CONFIG.moonZero.sourceLatitude, 26.82989);
+  assert.equal(mstc.CONFIG.moonZero.sourceLongitude, 80.96572);
   assert.equal(mstc.CONFIG.constants.lunarDaySeconds, 2551442.88);
-  assert.equal(mstc.getEquatorCoordinate(0), 0);
+  assert.equal(mstc.getEquatorCoordinate(80.96572), 0);
   assert.equal(mstc.getMeridianCoordinate(0), 0);
 
   const zero = mstc.getMoonSpaceTimeCoordinates({ time: epoch, epochUTC: epoch });
@@ -328,7 +350,7 @@ test('MSTC composes WSTC motion with Moon E/M/V and lunar P cycle', () => {
     longitude: -31,
     altitudeMeters: 1200,
   });
-  closeTo(place.wstc.E, 31);
+  closeTo(place.wstc.E, 111.96572);
   closeTo(place.wstc.M, -12.5);
   closeTo(place.wstc.V, 1200);
   assert.match(place.strings.mstc, /^Y0, O0, P0/);
@@ -348,10 +370,12 @@ test('MSTC and MaSTC keep body-specific P cycles separate from WSTC planet-day P
 });
 
 test('MaSTC composes WSTC motion with Mars E/M/V and Mars S/P cycles', () => {
-  assert.equal(mastc.CONFIG.marsZero.longitude, 0);
+  assert.equal(mastc.CONFIG.marsZero.longitude, 80.96572);
+  assert.equal(mastc.CONFIG.marsZero.sourceLatitude, 26.82989);
+  assert.equal(mastc.CONFIG.marsZero.sourceLongitude, 80.96572);
   assert.equal(mastc.CONFIG.constants.marsSolSeconds, 88775.244);
   assert.equal(mastc.CONFIG.constants.marsYearSeconds, 59355072);
-  assert.equal(mastc.getEquatorCoordinate(0), 0);
+  assert.equal(mastc.getEquatorCoordinate(80.96572), 0);
   assert.equal(mastc.getMeridianCoordinate(0), 0);
 
   const zero = mastc.getMarsSpaceTimeCoordinates({ time: epoch, epochUTC: epoch });
@@ -382,7 +406,7 @@ test('MaSTC composes WSTC motion with Mars E/M/V and Mars S/P cycles', () => {
     longitude: 137.4,
     altitudeMeters: -4500,
   });
-  closeTo(place.wstc.E, 222.6);
+  closeTo(place.wstc.E, 303.56572);
   closeTo(place.wstc.M, 4.5);
   closeTo(place.wstc.V, -4500);
   assert.match(place.strings.mastc, /^Y0, O0, P0/);
@@ -406,6 +430,8 @@ test('normalization helpers and validation are stable at boundaries', () => {
   assert.throws(() => wstc.getWorldSpaceTimeCoordinates({ time: 'not-a-date' }), /Invalid time/);
   assert.throws(() => mstc.getMoonSpaceTimeCoordinates({ time: epoch, latitude: 91 }), /latitude/);
   assert.throws(() => mastc.getMarsSpaceTimeCoordinates({ time: epoch, latitude: 91 }), /latitude/);
+  assert.throws(() => mstc.zeroCoordinateFrom({ latitude: 91, longitude: 0 }), /latitude/);
+  assert.throws(() => mastc.zeroCoordinateFrom({ latitude: 91, longitude: 0 }), /latitude/);
 });
 
 let failures = 0;

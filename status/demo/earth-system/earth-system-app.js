@@ -27,11 +27,11 @@
   function ensureClockMapLoaded() {
     if (window.EarthClockMapApp) return Promise.resolve();
     if (!clockMapLoadPromise) {
-      clockMapLoadPromise = loadScript('../earth-clock-map/world-space-time-coordinates.js?v=36')
-        .then(() => loadScript('../earth-clock-map/earth-space-time-coordinates.js?v=1'))
-        .then(() => loadScript('../earth-clock-map/moon-space-time-coordinates.js?v=1'))
-        .then(() => loadScript('../earth-clock-map/mars-space-time-coordinates.js?v=1'))
-        .then(() => loadScript('../earth-clock-map/earth-clock-map-app.js?v=49'))
+      clockMapLoadPromise = loadScript('../earth-clock-map/world-space-time-coordinates.js?v=37')
+        .then(() => loadScript('../earth-clock-map/earth-space-time-coordinates.js?v=2'))
+        .then(() => loadScript('../earth-clock-map/moon-space-time-coordinates.js?v=2'))
+        .then(() => loadScript('../earth-clock-map/mars-space-time-coordinates.js?v=2'))
+        .then(() => loadScript('../earth-clock-map/earth-clock-map-app.js?v=51'))
         .catch(error => {
           clockMapLoadPromise = null;
           console.error(error);

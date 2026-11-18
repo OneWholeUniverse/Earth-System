@@ -440,10 +440,10 @@ body.system-host.clock-arcs-closed.clock-coords-closed #app-hud{opacity:1;pointe
   <button id="pZeroButton" class="pzero-button" type="button">P0 --</button>
   <div class="epoch-control" aria-label="Zero Epoch control">
     <div class="epoch-row">
-      <span>Zero Epoch UTC</span>
+      <span>Zero Epoch IST</span>
       <button id="resetEpochButton" type="button">Reset</button>
     </div>
-    <input id="zeroEpochInput" type="datetime-local" value="1974-03-13T04:40">
+    <input id="zeroEpochInput" type="datetime-local" value="1974-03-13T02:05">
   </div>
 </section>
 
@@ -631,13 +631,17 @@ body.system-host.clock-arcs-closed.clock-coords-closed #app-hud{opacity:1;pointe
 <script src="https://unpkg.com/maplibre-gl@4.1.2/dist/maplibre-gl.js"></script>
 <script>
 window.EARTH_CORE_ASSET_BASE = '../earth-core/assets/';
+window.EARTH_CORE_OPTIONS = {
+  ...(window.EARTH_CORE_OPTIONS || {}),
+  viewOrientation: 'south-is-north',
+};
 window.EARTH_HEALTH_ENERGY_CONFIG = {
   ownsAppButtons: false,
   initialMode: 'none',
   autoOpenManifestCrew: false
 };
 </script>
-<script src="../earth-core/earth-core.js?v=moonlight-map-10"></script>
+<script src="../earth-core/earth-core.js?v=sunrise-from-the-west-5"></script>
 <script src="../shared/geonames.js?v=2"></script>
 <script src="../shared/earth-health-energy-app.js?v=modular-apps-6"></script>
 <script src="./earth-system-app.js?v=14"></script>

@@ -15,7 +15,8 @@
  *   P = Planet circle, exact configured atomic-second cycle.
  *
  * WSTC core intentionally does not know about Earth longitude, latitude,
- * altitude, sidereal rotation, or Africa zero. Those are ESTC concerns.
+ * altitude, sidereal rotation, or Earth zero-space origins. Those are ESTC
+ * concerns.
  *
  * Primary input:
  *   elapsedMillisecondsSinceEpoch
@@ -34,7 +35,8 @@
   const CONFIG = Object.freeze({
     system: "World Space-Time Coordinates",
     version: "v5 prototype",
-    epochUTC: "1974-03-13T04:40:00Z",
+    // Zero is born at March 13, 1974 02:05 IST, stored here as UTC.
+    epochUTC: "1974-03-12T20:35:00Z",
     constants: Object.freeze({
       planetDaySeconds: 86_400,
       starYearSeconds: STAR_YEAR_SECONDS,
