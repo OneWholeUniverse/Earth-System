@@ -1,15 +1,51 @@
-# 🌍 Signal Zero
+# Mission Zero
+
+**Destination**
+
+Location in spacetime where our universe is a five-star system of worlds.
+
+
+**Mission**
+
+Take the simplest, easiest and most fun path of least effort to the destination and record the stories of every role. Follow the need. Feel the need. Meet the need. Repeat. Pole pole. 
+
+
+**Path**
+
+- One-star location where all the needed systems and their roles are realigned, reset, reconfigured and restarted in pursuit of the mission.
+- Two-star location where all the needed systems and roles and their goals, actions and needs are mapped.
+- Three-star location where all the needed roles are meeting their goals.
+- Four-star location where all the needed roles are meeting their goals reliably.
+- Five-star location where all the needed roles are meeting their goals reliably and optimally.
+ 
+
+**Mission Day One: Earth**
+
+**Where should we go next?**
+
+Mission Day Two: Earth + Moon?
+
+Mission Day Three: Earth + Moon + Mars?
+
+**And then where?**
+
+TRAPPIST-1e?
+
+LHS 1140 b?
+
+Titan?
+
+Proxima Centauri b?
+
+------------------------------------------------------------------------
+
+
+<img width="1200" height="1600" alt="Captain Zero Original" src="https://github.com/user-attachments/assets/3bd740d0-eaaa-45d0-8f11-72a0a91f111f" />
 
 > **Earth Operating System**\
 > **Captain Zero of the Blue Pearl**\
 > *Maintenance Mode · Safe Harbor*
-
-------------------------------------------------------------------------
-
-`[ Signal Zero Begin ]`
-
-<img width="1200" height="1600" alt="Captain Zero Original" src="https://github.com/user-attachments/assets/3bd740d0-eaaa-45d0-8f11-72a0a91f111f" />
-
+> 
 ## Namaskar, Earth System, my love.
 
 I'm taking unconditional, complete, and immediate charge of our
