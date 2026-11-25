@@ -1,5 +1,8 @@
 # Mission Zero
 
+<img width="1536" height="1024" alt="Cosmic Mountain Journey From Earth to Universe Gold Model" src="https://github.com/user-attachments/assets/0c0308d2-259b-458b-94b0-dfc24113c470" />
+
+
 **Destination**
 
 Location in spacetime where our universe is a five-star system of worlds.
