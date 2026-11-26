@@ -3,42 +3,47 @@
 <img width="1536" height="1024" alt="Cosmic Mountain Journey From Earth to Universe Gold Model" src="https://github.com/user-attachments/assets/0c0308d2-259b-458b-94b0-dfc24113c470" />
 
 
-**Destination**
+**Destination** 
 
 Location in spacetime where our universe is a five-star system of worlds.
 
 
-**Mission**
+**Mission** 
 
-Take the simplest, easiest and most fun path of least effort to the destination and record the stories of every role. Follow the need. Feel the need. Meet the need. Repeat. Pole pole. 
+Take the simplest, easiest and most fun path of least effort to the destination.    
+Record the stories of every role.  
+Follow the need. Feel the need. Meet the need. Repeat.  
+Pole pole.   
 
 
 **Path**
 
-- One-star location where all the needed systems and their roles are realigned, reset, reconfigured and restarted in pursuit of the mission.
-- Two-star location where all the needed systems and roles and their goals, actions and needs are mapped.
-- Three-star location where all the needed roles are meeting their goals.
-- Four-star location where all the needed roles are meeting their goals reliably.
-- Five-star location where all the needed roles are meeting their goals reliably and optimally.
- 
+One-star location where all the needed systems and their roles are realigned, reset, reconfigured and restarted in pursuit of the mission.  
+Two-star location where all the needed systems and roles and their goals, actions and needs are mapped.  
+Three-star location where all the needed roles are meeting their goals.  
+Four-star location where all the needed roles are meeting their goals reliably.  
+Five-star location where all the needed roles are meeting their goals reliably and optimally.  
 
 **Mission Day One: Earth**
 
-**Where should we go next?**
+**Where shall we go next?**
 
-Mission Day Two: Earth + Moon?
+Mission Day Two: Earth + **Moon**
 
-Mission Day Three: Earth + Moon + Mars?
+Mission Day Three: Earth + Moon + **Mars**
+
+Mission Day Four: Earth + Moon + Mars + **Europa**?
+
+Mission Day Five: Earth + Moon + Mars + Europa + **Titan**?
+
+Mission Day Six: Earth + Moon + Mars + Europa + Titan + **Trappist-1e**?
+
 
 **And then where?**
 
-TRAPPIST-1e?
++LHS 1140 b?
 
-LHS 1140 b?
-
-Titan?
-
-Proxima Centauri b?
++Proxima Centauri b?
 
 ------------------------------------------------------------------------
 
